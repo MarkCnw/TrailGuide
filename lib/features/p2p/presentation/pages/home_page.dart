@@ -250,254 +250,256 @@ class _HomeViewState extends State<_HomeView> {
       ),
 
       // === BODY ===
-      body: Column(
-        children: [
-          // 🛠️ DASHBOARD CARD (Flashlight + GPS)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
-            child: Container(
-              height: 80,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 15,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: Row(
-                  children: [
-                    // เส้น Accent สีเขียว (Signature TrailGuide)
-                    Container(
-                      width: 6,
-                      height: double.infinity,
-                      color: const Color(0xFF2E7D32),
-                    ),
-
-                    // 🔦 ส่วนซ้าย: Flashlight Button
-                    Expanded(
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: _hasFlashlight ? _toggleFlashlight : null,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                _isFlashlightOn
-                                    ? Icons.flashlight_on
-                                    : Icons.flashlight_off,
-                                color: _isFlashlightOn
-                                    ? Colors.orangeAccent
-                                    : Colors.grey,
-                                size: 26,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _isFlashlightOn
-                                    ? "Flashlight: ON"
-                                    : "Flashlight",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: _isFlashlightOn
-                                      ? Colors.black87
-                                      : Colors.grey,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // เส้นคั่นกลาง
-                    Container(
-                      width: 1,
-                      height: 50,
-                      color: Colors.grey.withOpacity(0.2),
-                    ),
-
-                    // 📡 ส่วนขวา: GPS Signal (Dynamic Color)
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              // ไอคอนเปลี่ยนสีตามตัวแปร _signalColor
-                              Icon(
-                                Icons.satellite_alt_rounded,
-                                color: _signalColor,
-                                size: 26,
-                              ),
-
-                              const SizedBox(width: 8),
-
-                              // แท่งกราฟเปลี่ยนสีตามตัวแปร _signalColor
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  _buildSignalBar(
-                                    height: 6,
-                                    isActive: _gpsSignalBars >= 1,
-                                    activeColor: _signalColor,
-                                  ),
-                                  _buildSignalBar(
-                                    height: 10,
-                                    isActive: _gpsSignalBars >= 2,
-                                    activeColor: _signalColor,
-                                  ),
-                                  _buildSignalBar(
-                                    height: 14,
-                                    isActive: _gpsSignalBars >= 3,
-                                    activeColor: _signalColor,
-                                  ),
-                                  _buildSignalBar(
-                                    height: 18,
-                                    isActive: _gpsSignalBars >= 4,
-                                    activeColor: _signalColor,
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          // ข้อความเปลี่ยนสีตามตัวแปร _signalColor
-                          Text(
-                            _gpsStatusText,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: _signalColor,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // 🛠️ DASHBOARD CARD (Flashlight + GPS)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+              child: Container(
+                height: 80,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5),
                     ),
                   ],
                 ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Row(
+                    children: [
+                      // เส้น Accent สีเขียว (Signature TrailGuide)
+                      Container(
+                        width: 6,
+                        height: double.infinity,
+                        color: const Color(0xFF2E7D32),
+                      ),
+        
+                      // 🔦 ส่วนซ้าย: Flashlight Button
+                      Expanded(
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _hasFlashlight ? _toggleFlashlight : null,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  _isFlashlightOn
+                                      ? Icons.flashlight_on
+                                      : Icons.flashlight_off,
+                                  color: _isFlashlightOn
+                                      ? Colors.orangeAccent
+                                      : Colors.grey,
+                                  size: 26,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _isFlashlightOn
+                                      ? "Flashlight: ON"
+                                      : "Flashlight",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: _isFlashlightOn
+                                        ? Colors.black87
+                                        : Colors.grey,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+        
+                      // เส้นคั่นกลาง
+                      Container(
+                        width: 1,
+                        height: 50,
+                        color: Colors.grey.withOpacity(0.2),
+                      ),
+        
+                      // 📡 ส่วนขวา: GPS Signal (Dynamic Color)
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // ไอคอนเปลี่ยนสีตามตัวแปร _signalColor
+                                Icon(
+                                  Icons.satellite_alt_rounded,
+                                  color: _signalColor,
+                                  size: 26,
+                                ),
+        
+                                const SizedBox(width: 8),
+        
+                                // แท่งกราฟเปลี่ยนสีตามตัวแปร _signalColor
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    _buildSignalBar(
+                                      height: 6,
+                                      isActive: _gpsSignalBars >= 1,
+                                      activeColor: _signalColor,
+                                    ),
+                                    _buildSignalBar(
+                                      height: 10,
+                                      isActive: _gpsSignalBars >= 2,
+                                      activeColor: _signalColor,
+                                    ),
+                                    _buildSignalBar(
+                                      height: 14,
+                                      isActive: _gpsSignalBars >= 3,
+                                      activeColor: _signalColor,
+                                    ),
+                                    _buildSignalBar(
+                                      height: 18,
+                                      isActive: _gpsSignalBars >= 4,
+                                      activeColor: _signalColor,
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            // ข้อความเปลี่ยนสีตามตัวแปร _signalColor
+                            Text(
+                              _gpsStatusText,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: _signalColor,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-          SizedBox(height: 17),
-          // ส่วนปุ่มเมนูหลัก (Host / Join) แบบแนวนอน
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                // 🟢 การ์ด Host (Green Gradient)
-                Expanded(
-                  child: ActionGridCard(
-                    title: 'Host Team',
-                    subtitle: 'Create Group',
-                    icon: Icons.flag, // หรือใช้ SVG
-                    iconColor: Colors.white, // ไอคอนสีขาว
-                    // ✨ ใส่ Gradient สีเขียว ✨
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF0F3923), // เขียวเข้มมาก (เขียวป่า)
-                        Color(0xFF1B5E3C), // เขียวเข้มอมสด
-                      ],
+            SizedBox(height: 17),
+            // ส่วนปุ่มเมนูหลัก (Host / Join) แบบแนวนอน
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  // 🟢 การ์ด Host (Green Gradient)
+                  Expanded(
+                    child: ActionGridCard(
+                      title: 'Host Team',
+                      subtitle: 'Create Group',
+                      icon: Icons.flag, // หรือใช้ SVG
+                      iconColor: Colors.white, // ไอคอนสีขาว
+                      // ✨ ใส่ Gradient สีเขียว ✨
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFF0F3923), // เขียวเข้มมาก (เขียวป่า)
+                          Color(0xFF1B5E3C), // เขียวเข้มอมสด
+                        ],
+                      ),
+                      onTap: () => context.push('/lobby'),
                     ),
-                    onTap: () => context.push('/lobby'),
                   ),
-                ),
-
-                const SizedBox(width: 16),
-
-                // ⚫ การ์ด Join (Dark Gradient)
-                Expanded(
-                  child: ActionGridCard(
-                    title: 'Join Team',
-                    subtitle: 'Scan Code',
-                    icon: Icons.qr_code_scanner,
-                    iconColor: Colors.white, // ไอคอนสีขาว
-                    // ✨ ใส่ Gradient สีดำเทา ✨
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF232323), // ดำเทาเข้ม
-                        Color(0xFF2E2E2E), // เทาเข้ม
-                      ],
+        
+                  const SizedBox(width: 16),
+        
+                  // ⚫ การ์ด Join (Dark Gradient)
+                  Expanded(
+                    child: ActionGridCard(
+                      title: 'Join Team',
+                      subtitle: 'Scan Code',
+                      icon: Icons.qr_code_scanner,
+                      iconColor: Colors.white, // ไอคอนสีขาว
+                      // ✨ ใส่ Gradient สีดำเทา ✨
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFF232323), // ดำเทาเข้ม
+                          Color(0xFF2E2E2E), // เทาเข้ม
+                        ],
+                      ),
+                      onTap: () => context.push('/scan'),
                     ),
-                    onTap: () => context.push('/scan'),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-
-          // ... (ต่อจาก Row ปุ่ม Host/Join) ...
-          const SizedBox(height: 24), // เว้นระยะห่าง
-          // หัวข้อ "Recent Hikes" + "View All"
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Recent Hikes",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {},
-                  child: const Text(
-                    "View All",
+        
+            // ... (ต่อจาก Row ปุ่ม Host/Join) ...
+            const SizedBox(height: 24), // เว้นระยะห่าง
+            // หัวข้อ "Recent Hikes" + "View All"
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "Recent Hikes",
                     style: TextStyle(
-                      color: Color(0xFF2E7D32),
-                      fontWeight: FontWeight.w600,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
                     ),
                   ),
-                ),
-              ],
+                  TextButton(
+                    onPressed: () {},
+                    child: const Text(
+                      "View All",
+                      style: TextStyle(
+                        color: Color(0xFF2E7D32),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // รายการการ์ด (Mock Data)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              children: [
-                HikeHistoryCard(
-                  title: "Doi Chiang Dao",
-                  subtitle: "4hr 20m",
-                  date: "Nov 12",
-                  onTap: () {},
-                ),
-                HikeHistoryCard(
-                  title: "Mon Jam Loop",
-                  subtitle: "2hr 15m",
-                  date: "Oct 28",
-                  onTap: () {},
-                ),
-                HikeHistoryCard(
-                  title: "Pha Dok Siew",
-                  subtitle: "1hr 45m",
-                  date: "Oct 15",
-                  onTap: () {},
-                ),
-                // เพิ่มพื้นที่ว่างด้านล่างกันตกขอบ
-                const SizedBox(height: 20),
-              ],
+        
+            const SizedBox(height: 8),
+        
+            // รายการการ์ด (Mock Data)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: [
+                  HikeHistoryCard(
+                    title: "Doi Chiang Dao",
+                    subtitle: "4hr 20m",
+                    date: "Nov 12",
+                    onTap: () {},
+                  ),
+                  HikeHistoryCard(
+                    title: "Mon Jam Loop",
+                    subtitle: "2hr 15m",
+                    date: "Oct 28",
+                    onTap: () {},
+                  ),
+                  HikeHistoryCard(
+                    title: "Pha Dok Siew",
+                    subtitle: "1hr 45m",
+                    date: "Oct 15",
+                    onTap: () {},
+                  ),
+                  // เพิ่มพื้นที่ว่างด้านล่างกันตกขอบ
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -24,7 +24,8 @@ class StartAdvertisingEvent extends P2PEvent {
   @override
   List<Object> get props => [hostName];
 }
-
+// เพิ่ม Event เหล่านี้ต่อท้าย
+class SendStartTripEvent extends P2PEvent {} // Host สั่งเริ่ม
 // 3. เหตุการณ์: หยุด Discovery
 class StopDiscoveryEvent extends P2PEvent {}
 
@@ -48,4 +49,11 @@ class ConnectToPeerEvent extends P2PEvent {
   
   @override
   List<Object> get props => [peerId];
+}
+
+class OnMessageReceivedEvent extends P2PEvent { // BLoC รับข้อความจาก Stream
+  final String message;
+  const OnMessageReceivedEvent(this.message);
+  @override
+  List<Object> get props => [message];
 }

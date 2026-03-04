@@ -24,6 +24,8 @@ abstract class P2PRepository {
   /// Stream สำหรับส่งรายชื่อ peers ที่ค้นพบ
   Stream<List<PeerEntity>> get peersStream;
 
+  Stream<String> get messageStream;
+  Future<Either<Failure, void>> broadcastMessage(String message);
   // ============================================================
   // CALLBACKS - ต้อง set ก่อนใช้งาน
   // ============================================================

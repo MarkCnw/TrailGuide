@@ -1,5 +1,3 @@
-
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -140,11 +138,12 @@ class _LobbyPageState extends State<LobbyPage> {
   Widget build(BuildContext context) {
     return BlocConsumer<RoomBloc, RoomState>(
       listener: (context, state) {
-        if (state is RoomCreated) {
-          setState(() {
-            _isCreatingRoom = false;
-            _roomCreated = true;
-          });
+        if (state is RoomTripStarted) {
+          context.pushReplacement('/tracking');
+        }
+        // 🆕 ดักฟังสถานะเริ่มทริป เมื่อได้รับแล้วให้เปลี่ยนหน้าจอไปยัง Tracking
+        else if (state is RoomTripStarted) {
+          context.pushReplacement('/tracking');
         } else if (state is RoomLeft) {
           context.pop();
         } else if (state is RoomError) {
@@ -461,177 +460,233 @@ class _LobbyPageState extends State<LobbyPage> {
   }
 
   Widget _buildLobbyContent(RoomCreated state) {
-  return Column(
-    children: [
-      // Header Card - แสดงชื่อห้อง + รหัสผ่าน
-      Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.green[600]!, Colors.green[400]! ],
-            begin: Alignment. topLeft,
-            end:  Alignment.bottomRight,
+    return Column(
+      children: [
+        // Header Card - แสดงชื่อห้อง + รหัสผ่าน
+        Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.green[600]!, Colors.green[400]!],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
           ),
-          borderRadius: BorderRadius. circular(20),
-        ),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets. all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white. withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.home_rounded, color: Colors.white, size: 28),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:  CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${state.hostName}\'s Room',
-                        style:  const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color:  Colors.greenAccent,
-                              shape:  BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Text(
-                            'Room is active',
-                            style: TextStyle(color: Colors.white70, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    state.memberCountDisplay,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green[700],
-                      fontSize: 16,
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.home_rounded,
+                      color: Colors.white,
+                      size: 28,
                     ),
                   ),
-                ),
-              ],
-            ),
-            
-            // 🆕 แสดงรหัสผ่าน
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical:  10),
-              decoration: BoxDecoration(
-                color: Colors.white. withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child:  Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.lock_outline, color: Colors.white, size: 18),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Password:  ',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${state.hostName}\'s Room',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: Colors.greenAccent,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Room is active',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  Text(
-                    state.room.password,
-                    style: const TextStyle(
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
                       color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 4,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      state.memberCountDisplay,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green[700],
+                        fontSize: 16,
+                      ),
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
 
-      // Members List
-      Expanded(
-        child: Container(
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius. circular(20),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Members',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey[800],
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
                 ),
-              ),
-              const SizedBox(height:  16),
-              Expanded(
-                child: ListView. separated(
-                  itemCount: state.allParticipants.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final member = state.allParticipants[index];
-                    return _buildMemberItem(member);
-                  },
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.lock_outline,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Password:  ',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
+                    ),
+                    Text(
+                      state.room.password,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 4,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-      ),
 
-      // Close Room Button
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-        child: SizedBox(
-          width: double.infinity,
-          height: 56,
-          child: OutlinedButton. icon(
-            onPressed: _showCloseRoomDialog,
-            style: OutlinedButton.styleFrom(
-              foregroundColor:  Colors.red[600],
-              side: BorderSide(color: Colors.red[300]!),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        // Members List
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
             ),
-            icon: const Icon(Icons.close_rounded),
-            label: const Text(
-              'Close Room',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Members',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: state.allParticipants.length,
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final member = state.allParticipants[index];
+                      return _buildMemberItem(member);
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-      ),
-    ],
-  );
-}
+
+        // 🆕 Start Adventure Button (ปุ่มเริ่มทริปสำหรับ Host)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                // ส่ง Event ไปยัง BLoC เพื่อสั่งให้ทุกเครื่องเปลี่ยนหน้าจอ
+                context.read<RoomBloc>().add(StartTripEvent());
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green[600],
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                elevation: 0,
+              ),
+              icon: const Icon(Icons.explore_rounded, size: 24),
+              label: const Text(
+                'Start Adventure',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // Close Room Button
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: OutlinedButton.icon(
+              onPressed: _showCloseRoomDialog,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red[600],
+                side: BorderSide(color: Colors.red[300]!),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              icon: const Icon(Icons.close_rounded),
+              label: const Text(
+                'Close Room',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildMemberItem(PeerEntity member) {
     final imageBytes = ImageHelper.decodeBase64(member.imageBase64);
