@@ -3,8 +3,11 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:trail_guide/features/onboarding/data/datasources/onboarding_local_data_source.dart';
 import 'package:trail_guide/features/onboarding/presentation/cubit/onboarding_cubit.dart';
+import 'package:trail_guide/features/p2p/domain/usecases/broadcast_message.dart';
+import 'package:trail_guide/features/p2p/domain/usecases/watch_messages.dart';
 import 'package:trail_guide/features/p2p/presentation/bloc/p2p/p2p_bloc.dart';
 import 'package:trail_guide/features/p2p/presentation/bloc/room/room_bloc.dart';
+import 'package:trail_guide/features/tracking/presentation/bloc/location/location_bloc.dart';
 
 // Features - P2P
 import 'features/p2p/data/repositories/p2p_repository_impl.dart';
@@ -56,10 +59,20 @@ Future<void> init() async {
   // Use Cases
   sl.registerLazySingleton(() => ScanForPeers(sl()));
   sl.registerLazySingleton(() => WatchPeers(sl()));
+  sl.registerLazySingleton(() => WatchMessages(sl())); // 🆕
+  sl.registerLazySingleton(() => BroadcastMessage(sl())); // 🆕
+  sl.registerFactory(() => LocationBloc()); // 🆕 เพิ่มบรรทัดนี้
 
   // P2P BLoC
-  sl.registerLazySingleton<P2PBloc>(
-    () => P2PBloc(scanForPeers: sl(), watchPeers: sl(), repository: sl()),
+  // 🔥 แก้ไขตรงนี้: เติม parameters ที่ขาดไปให้ครบ
+  sl.registerFactory<P2PBloc>(
+    () => P2PBloc(
+      scanForPeers: sl(),
+      watchPeers: sl(),
+      watchMessages: sl(), // <- เพิ่มตัวนี้
+      broadcastMessage: sl(), // <- เพิ่มตัวนี้
+      repository: sl(),
+    ),
   );
 
   // 🆕 Room BLoC - เพิ่มใหม่

@@ -66,6 +66,13 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     on<PeerDisconnectedEvent>(_onPeerDisconnected);
     on<ResetRoomEvent>(_onReset);
 
+    // 🆕 Event สำหรับเริ่มทริป
+    on<StartTripEvent>(_onStartTrip);
+    on<OnTripStartedByHostEvent>(_onTripStartedByHost);
+
+    on<SendMyLocationEvent>(_onSendMyLocation);
+    on<UpdatePeerLocationEvent>(_onUpdatePeerLocation);
+
     // Generate Device ID
     _deviceId = 'device_${DateTime.now().millisecondsSinceEpoch}';
   }
@@ -140,7 +147,6 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
       }
     } else if (isMember && _hostPeerId != null) {
       final lastPing = _lastPingTime[_hostPeerId];
-      // 🔧 FIX:  ลบ !  ออก เพราะเช็ค != null แล้ว
       if (lastPing != null && now.difference(lastPing) > timeout) {
         add(PeerDisconnectedEvent(_hostPeerId!));
       }
@@ -158,11 +164,9 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     emit(const RoomLoading(message: 'Creating room...'));
 
     try {
-      // 🆕 เก็บ Host info
       _hostName = event.hostName;
       _hostImageBase64 = event.hostImageBase64;
 
-      // 1. สร้าง Room Entity
       _currentRoom = RoomEntity.create(
         password: event.password,
         hostId: _deviceId,
@@ -170,7 +174,6 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
         maxMembers: event.maxMembers,
       );
 
-      // 2. เริ่ม Advertising
       final advertisingName = '${event.hostName}#${_currentRoom!.roomPin}';
       final result = await _repository.startAdvertising(
         advertisingName,
@@ -188,7 +191,6 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
 
           _startKeepAlive();
 
-          // 🆕 เพิ่ม hostName และ hostImageBase64
           emit(
             RoomCreated(
               room: _currentRoom!,
@@ -262,7 +264,6 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     try {
       await _repository.stopDiscovery();
 
-      // 🆕 เก็บ member info
       _memberName = event.memberName;
       _memberImageBase64 = event.memberImageBase64;
 
@@ -277,7 +278,6 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
         (_) async {
           await Future.delayed(const Duration(milliseconds: 800));
 
-          // 🆕 ส่ง imageBase64 ไปด้วย
           final joinRequest = RoomMessage.joinRequest(
             memberId: _deviceId,
             memberName: event.memberName,
@@ -352,6 +352,32 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
   }
 
   // ============================================================
+  // START TRIP (ใหม่)
+  // ============================================================
+
+  // ✅ 1. เมื่อ Host กดปุ่ม Start Adventure
+  Future<void> _onStartTrip(
+    StartTripEvent event,
+    Emitter<RoomState> emit,
+  ) async {
+    print("🚀 Host กำลังเริ่มทริป และส่งคำสั่งให้ทุกคน...");
+    for (final member in _connectedMembers) {
+      await _repository.sendPayload(member.id, "CMD:START_TRIP");
+    }
+    // 🔥 แก้บรรทัดนี้: ส่งข้อมูลเพื่อนไปด้วย
+    emit(RoomTripStarted(members: List.from(_connectedMembers)));
+  }
+
+  // ✅ 2. เมื่อ Member เปลี่ยน State หน้าจอ
+  void _onTripStartedByHost(
+    OnTripStartedByHostEvent event,
+    Emitter<RoomState> emit,
+  ) {
+    // 🔥 แก้บรรทัดนี้: ส่งข้อมูลเพื่อนไปด้วย
+    emit(RoomTripStarted(members: List.from(_allMembersForMember)));
+  }
+
+  // ============================================================
   // รับข้อความจาก Peer
   // ============================================================
 
@@ -423,10 +449,6 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
   // HOST: Handle Join Request
   // ============================================================
 
-  // ============================================================
-  // HOST: Handle Join Request
-  // ============================================================
-
   Future<void> _handleJoinRequest(
     String fromPeerId,
     RoomMessage message,
@@ -461,9 +483,9 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
       return;
     }
 
-    // 3. 🔧 FIX: สร้าง members list ก่อนเพิ่มคนใหม่ (ไม่รวมคนที่เพิ่งเข้ามา)
+    // 3. สร้าง members list ก่อนเพิ่มคนใหม่ (ไม่รวมคนที่เพิ่งเข้ามา)
     final membersList = _connectedMembers
-        .where((m) => m.id != fromPeerId) // 🔧 ไม่รวมคนที่กำลังจะเข้า
+        .where((m) => m.id != fromPeerId)
         .map(
           (m) => {
             'id': m.id,
@@ -499,11 +521,11 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
       maxMembers: _currentRoom!.maxMembers,
       hostImageBase64: _hostImageBase64,
       roomPassword: _currentRoom!.password,
-      members: membersList, // 🔧 ส่ง list ที่ไม่รวมคนใหม่
+      members: membersList,
     );
     await _repository.sendPayload(fromPeerId, acceptMessage.toJson());
 
-    // 6.  Broadcast ไป Members คนอื่นๆ
+    // 6. Broadcast ไป Members คนอื่นๆ
     final joinedNotification = RoomMessage.memberJoined(
       hostId: _deviceId,
       hostName: _currentRoom!.hostName,
@@ -551,7 +573,7 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
       hostName: _currentRoom!.hostName,
       leftMemberId: memberId,
       leftMemberName: memberName,
-      currentMemberCount: _connectedMembers.length + 1, // 🆕 รวม Host
+      currentMemberCount: _connectedMembers.length + 1,
       maxMembers: _currentRoom!.maxMembers,
     );
     await _broadcastToAllMembers(leftNotification);
@@ -560,8 +582,8 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
       RoomCreated(
         room: _currentRoom!,
         connectedMembers: List.from(_connectedMembers),
-        hostName: _hostName, // 🆕
-        hostImageBase64: _hostImageBase64, // 🆕
+        hostName: _hostName,
+        hostImageBase64: _hostImageBase64,
       ),
     );
   }
@@ -570,19 +592,13 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
   // MEMBER: Handle Join Response
   // ============================================================
 
-  // ============================================================
-  // MEMBER:  Handle Join Response
-  // ============================================================
-
   Future<void> _handleJoinResponse(
     RoomMessage message,
     Emitter<RoomState> emit,
   ) async {
     if (message.isJoinAccepted) {
-      // 🆕 สร้าง allMembers list (รวม Host)
       _allMembersForMember.clear();
 
-      // เพิ่ม Host เป็นคนแรก
       _allMembersForMember.add(
         PeerEntity(
           id: message.senderId,
@@ -592,12 +608,10 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
         ),
       );
 
-      // เพิ่ม Members ที่มีอยู่แล้ว (ไม่รวมตัวเอง)
       final members = message.members;
       if (members != null) {
         for (final m in members) {
           final memberId = m['id'] as String? ?? '';
-          // 🔧 FIX: ไม่เพิ่มตัวเองซ้ำ
           if (memberId != _deviceId && memberId.isNotEmpty) {
             _allMembersForMember.add(
               PeerEntity(
@@ -611,7 +625,6 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
         }
       }
 
-      // เพิ่มตัวเอง (ครั้งเดียว)
       _allMembersForMember.add(
         PeerEntity(
           id: _deviceId,
@@ -625,7 +638,7 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
         RoomJoined(
           roomId: message.roomId ?? '',
           roomPin: message.payload['roomPin'] as String? ?? '',
-          roomPassword: message.roomPassword ?? '', // 🆕 เพิ่ม
+          roomPassword: message.roomPassword ?? '',
           hostPeerId: _hostPeerId ?? '',
           hostName: message.senderName,
           hostImageBase64: message.hostImageBase64,
@@ -670,7 +683,6 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
   ) {
     final currentState = state;
     if (currentState is RoomJoined) {
-      // 🆕 เพิ่ม member ใหม่เข้า list
       final newMember = PeerEntity(
         id: message.memberId ?? '',
         name: message.memberName ?? '',
@@ -678,7 +690,6 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
         isHost: false,
       );
 
-      // เช็คว่ามีอยู่แล้วหรือยัง
       final alreadyExists = _allMembersForMember.any(
         (m) => m.id == newMember.id,
       );
@@ -702,7 +713,6 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
   ) {
     final currentState = state;
     if (currentState is RoomJoined) {
-      // 🆕 ลบ member ออกจาก list
       _allMembersForMember.removeWhere((m) => m.id == message.memberId);
 
       emit(
@@ -831,8 +841,39 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     }
   }
 
+  // 💥 แก้ไขฟังก์ชันนี้เพื่อรองรับ String ธรรมดา
   void processIncomingMessage(String fromPeerId, Uint8List bytes) {
     try {
+      final rawString = String.fromCharCodes(bytes);
+      if (rawString == "CMD:START_TRIP") {
+        print("🚀 ได้รับคำสั่ง START จาก Host แล้ว!");
+        add(OnTripStartedByHostEvent());
+        return;
+      }
+
+      // 🆕 4. ดักจับพิกัด GPS ที่ลอยมาตามอากาศ!
+      if (rawString.startsWith("LOC:")) {
+        // หั่นข้อความด้วยลูกน้ำ (,)
+        final parts = rawString.substring(4).split(',');
+        if (parts.length == 3) {
+          final senderId = parts[0];
+          final lat = double.tryParse(parts[1]);
+          final lng = double.tryParse(parts[2]);
+          if (lat != null && lng != null) {
+            // โยนเข้า BLoC ให้อัปเดต UI
+            add(
+              UpdatePeerLocationEvent(
+                peerId: senderId,
+                latitude: lat,
+                longitude: lng,
+              ),
+            );
+          }
+        }
+        return; // ทำเสร็จก็จบเลย ไม่ต้องไปแปลง JSON
+      }
+
+      // ถ้าไม่ใช่คำสั่งพิเศษ แสดงว่าเป็น JSON ของ RoomMessage (เช่น Ping)
       final message = RoomMessage.fromBytes(bytes.toList());
       add(
         RoomMessageReceivedEvent(fromPeerId: fromPeerId, message: message),
@@ -844,6 +885,88 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
 
   void processPeerDisconnected(String peerId) {
     add(PeerDisconnectedEvent(peerId));
+  }
+
+  // ============================================================
+  // GPS TRACKING (Phase 2)
+  // ============================================================
+
+  // 1. ฟังก์ชันตัวช่วยส่งข้อความหาทุกคน (แบบ String ธรรมดา)
+  Future<void> _broadcastToAllMembersRaw(
+    String message, {
+    String? excludePeerId,
+  }) async {
+    for (final member in _connectedMembers) {
+      if (member.id != excludePeerId) {
+        await _repository.sendPayload(member.id, message);
+      }
+    }
+  }
+
+  // 2. เมื่อ BLoC สั่งให้ส่งพิกัดตัวเอง
+  Future<void> _onSendMyLocation(
+    SendMyLocationEvent event,
+    Emitter<RoomState> emit,
+  ) async {
+    // แพ็กของใส่กล่อง รูปแบบ: "LOC:รหัสคนส่ง,ละติจูด,ลองจิจูด"
+    final locString =
+        "LOC:$_deviceId,${event.latitude},${event.longitude}";
+
+    if (isHost) {
+      // Host กระจายหา Member ทุกคน
+      await _broadcastToAllMembersRaw(locString);
+    } else if (isMember && _hostPeerId != null) {
+      // Member ส่งหา Host (เดี๋ยว Host จะกระจายต่อให้เอง)
+      await _repository.sendPayload(_hostPeerId!, locString);
+    }
+  }
+
+  // 3. เมื่อได้รับพิกัดคนอื่น อัปเดตรายชื่อเพื่อน
+  Future<void> _onUpdatePeerLocation(
+    UpdatePeerLocationEvent event,
+    Emitter<RoomState> emit,
+  ) async {
+    final pId = event.peerId;
+    final lat = event.latitude;
+    final lng = event.longitude;
+
+    if (isHost) {
+      final index = _connectedMembers.indexWhere((m) => m.id == pId);
+      if (index != -1) {
+        // อัปเดตพิกัดเพื่อนคนนั้น
+        _connectedMembers[index] = _connectedMembers[index].copyWith(
+          latitude: lat,
+          longitude: lng,
+        );
+
+        // 🔄 หัวใจสำคัญ: Host ทำหน้าที่เป็น "ศูนย์กลาง (Router)" ส่งต่อพิกัดของนาย A ไปให้ทุกคนรู้ (ยกเว้นนาย A)
+        final locString = "LOC:$pId,$lat,$lng";
+        await _broadcastToAllMembersRaw(locString, excludePeerId: pId);
+
+        emit(
+          RoomTrackingUpdated(
+            members: isHost
+                ? List.from(_connectedMembers)
+                : List.from(_allMembersForMember),
+          ),
+        );
+      }
+    } else if (isMember) {
+      final index = _allMembersForMember.indexWhere((m) => m.id == pId);
+      if (index != -1) {
+        _allMembersForMember[index] = _allMembersForMember[index].copyWith(
+          latitude: lat,
+          longitude: lng,
+        );
+        if (state is RoomJoined) {
+          emit(
+            (state as RoomJoined).copyWith(
+              allMembers: List.from(_allMembersForMember),
+            ),
+          );
+        }
+      }
+    }
   }
 
   @override

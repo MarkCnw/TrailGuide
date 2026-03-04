@@ -7,6 +7,8 @@ class PeerEntity extends Equatable {
   final bool isLost;
   final String? imageBase64;
   final bool isHost;
+  final double? latitude; // 🆕 เก็บละติจูด
+  final double? longitude; // 🆕 เก็บจิจูด
 
   const PeerEntity({
     required this.id,
@@ -15,6 +17,8 @@ class PeerEntity extends Equatable {
     this.isLost = false,
     this.imageBase64,
     this.isHost = false,
+    this.latitude,
+    this.longitude,
   });
 
   PeerEntity copyWith({
@@ -24,22 +28,30 @@ class PeerEntity extends Equatable {
     bool? isLost,
     String? imageBase64,
     bool? isHost,
+    double? latitude,
+    double? longitude,
   }) {
     return PeerEntity(
-      id: id ??  this.id,
+      id: id ?? this.id,
       name: name ?? this.name,
-      rssi: rssi ?? this. rssi,
+      rssi: rssi ?? this.rssi,
       isLost: isLost ?? this.isLost,
-      imageBase64: imageBase64 ?? this. imageBase64,
+      imageBase64: imageBase64 ?? this.imageBase64,
       isHost: isHost ?? this.isHost,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
     );
   }
 
   @override
-  List<Object?> get props => [id, name, rssi, isLost, imageBase64, isHost];
-
-  @override
-  String toString() {
-    return 'PeerEntity(id: $id, name: $name, isHost: $isHost)';
-  }
+  List<Object?> get props => [
+    id,
+    name,
+    rssi,
+    isLost,
+    imageBase64,
+    isHost,
+    latitude,
+    longitude,
+  ];
 }

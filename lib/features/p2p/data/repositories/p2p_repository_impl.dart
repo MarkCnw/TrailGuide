@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-
 import 'package:dartz/dartz.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:nearby_connections/nearby_connections.dart';
@@ -9,7 +8,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:trail_guide/features/p2p/domain/entities/peer_entity.dart';
 
 import '../../../../core/error/failures.dart';
-
 import '../../domain/repositories/p2p_repository.dart';
 
 /// Implementation ของ P2PRepository ใช้ nearby_connections package
@@ -23,6 +21,12 @@ class P2PRepositoryImpl implements P2PRepository {
   final _peerStreamController = StreamController<List<PeerEntity>>.broadcast();
   final List<PeerEntity> _discoveredPeers = [];
   final List<PeerEntity> _connectedPeers = [];
+  
+  // 🆕 Stream สำหรับส่งต่อข้อความ (Payload) ที่ได้รับ
+  final _messageStreamController = StreamController<String>.broadcast();
+  
+  // 🆕 เก็บ endpointId ของเครื่องที่เชื่อมต่อสำเร็จ เพื่อเอาไว้ Broadcast
+  final List<String> _connectedEndpoints = [];
 
   // ============================================================
   // CALLBACKS
@@ -61,7 +65,7 @@ class P2PRepositoryImpl implements P2PRepository {
   // เก็บชื่อ peer ที่กำลังเชื่อมต่อ
   final Map<String, String> _pendingConnectionNames = {};
 
-  // 🆕 เก็บ peer ที่ accept แล้ว (ป้องกัน accept ซ้ำ)
+  // เก็บ peer ที่ accept แล้ว (ป้องกัน accept ซ้ำ)
   final Set<String> _acceptedPeers = {};
 
   P2PRepositoryImpl();
@@ -85,6 +89,10 @@ class P2PRepositoryImpl implements P2PRepository {
   @override
   bool get isDiscovering => _isDiscovering;
 
+  // 🆕 Getter สำหรับ Stream รับข้อความ
+  @override
+  Stream<String> get messageStream => _messageStreamController.stream;
+
   // ============================================================
   // PERMISSIONS
   // ============================================================
@@ -107,7 +115,7 @@ class P2PRepositoryImpl implements P2PRepository {
       ].request();
 
       // 3. ตรวจสอบ Location Permission
-      if (statuses[Permission.location]?. isDenied ?? true) {
+      if (statuses[Permission.location]?.isDenied ?? true) {
         return const Left(P2PFailure('กรุณาอนุญาต Location Permission'));
       }
 
@@ -132,26 +140,22 @@ class P2PRepositoryImpl implements P2PRepository {
     String strategy,
   ) async {
     try {
-      // หยุด discovery เก่าก่อน (ถ้ามี)
       if (_isDiscovering) {
         await _nearby.stopDiscovery();
         await Future.delayed(const Duration(milliseconds: 300));
       }
 
-      // ตรวจสอบ permissions
       final permissionResult = await _checkPermissions();
       if (permissionResult.isLeft()) {
-        return permissionResult. fold(
+        return permissionResult.fold(
           (failure) => Left(failure),
           (_) => const Left(P2PFailure('Permission Error')),
         );
       }
 
-      // Clear discovered peers
       _discoveredPeers.clear();
       _updatePeersStream();
 
-      // เริ่ม Discovery
       final bool result = await _nearby.startDiscovery(
         userName,
         _strategy,
@@ -177,11 +181,9 @@ class P2PRepositoryImpl implements P2PRepository {
   }
 
   void _onEndpointFound(String endpointId, String endpointName) {
-    // ตรวจสอบว่ามีอยู่แล้วหรือไม่
-    final existingIndex = _discoveredPeers. indexWhere((p) => p.id == endpointId);
+    final existingIndex = _discoveredPeers.indexWhere((p) => p.id == endpointId);
 
     if (existingIndex >= 0) {
-      // อัปเดต peer ที่มีอยู่
       _discoveredPeers[existingIndex] = PeerEntity(
         id: endpointId,
         name: endpointName,
@@ -189,7 +191,6 @@ class P2PRepositoryImpl implements P2PRepository {
         isLost: false,
       );
     } else {
-      // เพิ่ม peer ใหม่
       _discoveredPeers.add(PeerEntity(
         id: endpointId,
         name: endpointName,
@@ -210,7 +211,6 @@ class P2PRepositoryImpl implements P2PRepository {
     _retryTimer?.cancel();
     _retryTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
       if (_isDiscovering) {
-        // Restart discovery เพื่อ refresh รายการ
         await _nearby.stopDiscovery();
         await Future.delayed(const Duration(milliseconds: 500));
 
@@ -253,26 +253,22 @@ class P2PRepositoryImpl implements P2PRepository {
     String strategy,
   ) async {
     try {
-      // หยุด advertising เก่าก่อน (ถ้ามี)
       if (_isAdvertising) {
         await _nearby.stopAdvertising();
         await Future.delayed(const Duration(milliseconds: 300));
       }
 
-      // ตรวจสอบ permissions
       final permissionResult = await _checkPermissions();
       if (permissionResult.isLeft()) {
-        return permissionResult. fold(
+        return permissionResult.fold(
           (failure) => Left(failure),
           (_) => const Left(P2PFailure('Permission Error')),
         );
       }
 
-      // Clear
       _connectedPeers.clear();
-      _acceptedPeers. clear();
+      _acceptedPeers.clear();
 
-      // เริ่ม Advertising
       final bool result = await _nearby.startAdvertising(
         userName,
         _strategy,
@@ -294,14 +290,12 @@ class P2PRepositoryImpl implements P2PRepository {
   }
 
   void _onConnectionInitiated(String endpointId, ConnectionInfo info) {
-    print('P2P:  Connection initiated from $endpointId (${info.endpointName})');
+    print('P2P: Connection initiated from $endpointId (${info.endpointName})');
 
-    // เก็บชื่อไว้ก่อน
     _pendingConnectionNames[endpointId] = info.endpointName;
 
-    // 🆕 เช็คว่า accept แล้วหรือยัง
-    if (! _acceptedPeers.contains(endpointId)) {
-      _acceptedPeers. add(endpointId);
+    if (!_acceptedPeers.contains(endpointId)) {
+      _acceptedPeers.add(endpointId);
       acceptConnection(endpointId);
     }
   }
@@ -309,30 +303,29 @@ class P2PRepositoryImpl implements P2PRepository {
   void _onConnectionResult(String endpointId, Status status) {
     print('P2P: Connection result for $endpointId: $status');
 
-    if (status == Status. CONNECTED) {
+    if (status == Status.CONNECTED) {
       final peerName = _pendingConnectionNames[endpointId] ?? 'Unknown';
 
-      // เพิ่มเข้า connected peers
       final newPeer = PeerEntity(
         id: endpointId,
         name: peerName,
         rssi: 0,
-        isLost:  false,
+        isLost: false,
       );
 
-      // ตรวจสอบว่ามีอยู่แล้วหรือไม่
       final existingIndex = _connectedPeers.indexWhere((p) => p.id == endpointId);
       if (existingIndex < 0) {
         _connectedPeers.add(newPeer);
       }
+      
+      // บันทึกเข้า list สำหรับใช้ส่ง Broadcast
+      if (!_connectedEndpoints.contains(endpointId)) {
+        _connectedEndpoints.add(endpointId);
+      }
 
-      // Notify callback
       _onNewConnection?.call(endpointId, peerName);
-
-      // Clear pending
       _pendingConnectionNames.remove(endpointId);
     } else {
-      // Connection failed
       _pendingConnectionNames.remove(endpointId);
       _acceptedPeers.remove(endpointId);
     }
@@ -341,11 +334,10 @@ class P2PRepositoryImpl implements P2PRepository {
   void _onDisconnected(String endpointId) {
     print('P2P: Disconnected from $endpointId');
 
-    // ลบออกจาก connected peers
     _connectedPeers.removeWhere((p) => p.id == endpointId);
-    _acceptedPeers. remove(endpointId);
+    _acceptedPeers.remove(endpointId);
+    _connectedEndpoints.remove(endpointId); // ลบออกจาก list broadcast
 
-    // Notify callback
     _onPeerDisconnected?.call(endpointId);
   }
 
@@ -361,7 +353,7 @@ class P2PRepositoryImpl implements P2PRepository {
   }
 
   // ============================================================
-  // CONNECTION
+  // CONNECTION & PAYLOAD (Accepting)
   // ============================================================
 
   @override
@@ -369,17 +361,16 @@ class P2PRepositoryImpl implements P2PRepository {
     try {
       print('P2P: Requesting connection to $peerId');
 
-      // 🆕 Clear accepted peers for new connection
       _acceptedPeers.clear();
 
       await _nearby.requestConnection(
         'TrailGuide User',
         peerId,
         onConnectionInitiated: (endpointId, info) {
-          print('P2P:  (Member) Connection initiated to $endpointId');
+          print('P2P: (Member) Connection initiated to $endpointId');
           _pendingConnectionNames[endpointId] = info.endpointName;
 
-          if (!_acceptedPeers. contains(endpointId)) {
+          if (!_acceptedPeers.contains(endpointId)) {
             _acceptedPeers.add(endpointId);
             acceptConnection(endpointId);
           }
@@ -387,7 +378,7 @@ class P2PRepositoryImpl implements P2PRepository {
         onConnectionResult: (endpointId, status) {
           print('P2P: (Member) Connection result: $status');
 
-          if (status == Status. CONNECTED) {
+          if (status == Status.CONNECTED) {
             final peerName = _pendingConnectionNames[endpointId] ?? 'Unknown';
 
             final newPeer = PeerEntity(
@@ -399,10 +390,15 @@ class P2PRepositoryImpl implements P2PRepository {
 
             final existingIndex = _connectedPeers.indexWhere((p) => p.id == endpointId);
             if (existingIndex < 0) {
-              _connectedPeers. add(newPeer);
+              _connectedPeers.add(newPeer);
+            }
+            
+            // บันทึกเข้า list สำหรับใช้ส่ง Broadcast
+            if (!_connectedEndpoints.contains(endpointId)) {
+              _connectedEndpoints.add(endpointId);
             }
 
-            _onNewConnection?. call(endpointId, peerName);
+            _onNewConnection?.call(endpointId, peerName);
             _pendingConnectionNames.remove(endpointId);
           } else {
             _acceptedPeers.remove(endpointId);
@@ -412,6 +408,7 @@ class P2PRepositoryImpl implements P2PRepository {
           print('P2P: (Member) Disconnected from $endpointId');
           _connectedPeers.removeWhere((p) => p.id == endpointId);
           _acceptedPeers.remove(endpointId);
+          _connectedEndpoints.remove(endpointId);
           _onPeerDisconnected?.call(endpointId);
         },
       );
@@ -421,6 +418,7 @@ class P2PRepositoryImpl implements P2PRepository {
     }
   }
 
+  // 🔥 ฟังก์ชันหลักสำหรับยอมรับการเชื่อมต่อ และ "ดักฟังข้อมูล"
   @override
   Future<Either<Failure, void>> acceptConnection(String peerId) async {
     try {
@@ -429,23 +427,27 @@ class P2PRepositoryImpl implements P2PRepository {
       await _nearby.acceptConnection(
         peerId,
         onPayLoadRecieved: (endpointId, payload) {
-          _handlePayloadReceived(endpointId, payload);
+          // ดักจับข้อมูลที่วิ่งเข้ามาในท่อ
+          if (payload.type == PayloadType.BYTES && payload.bytes != null) {
+            // 1. แปลง Bytes เป็น String
+            String message = String.fromCharCodes(payload.bytes!);
+            print("📦 P2P: Received Payload from $endpointId: $message");
+            
+            // 2. พ่นข้อมูลเข้า Stream พร้อมบอกว่าใครส่งมา เพื่อให้ BLoC นำไปใช้ต่อ
+            _messageStreamController.add("$endpointId|$message");
+            
+            // เรียก callback เก่า (ถ้ามีใครใช้อยู่)
+            _onPayloadReceived?.call(endpointId, payload.bytes!);
+          }
         },
         onPayloadTransferUpdate: (endpointId, update) {
-          // สำหรับ file transfer - ไม่ใช้ตอนนี้
+          // ไม่ได้ใช้สำหรับ Byte Transfer
         },
       );
+      
       return const Right(null);
     } catch (e) {
       return Left(P2PFailure('Accept Connection Error: $e'));
-    }
-  }
-
-  void _handlePayloadReceived(String endpointId, Payload payload) {
-    if (payload.type == PayloadType.BYTES && payload.bytes != null) {
-      print('P2P: Received payload from $endpointId (${payload.bytes! .length} bytes)');
-      // Notify callback
-      _onPayloadReceived?.call(endpointId, payload.bytes!);
     }
   }
 
@@ -456,6 +458,7 @@ class P2PRepositoryImpl implements P2PRepository {
       _nearby.disconnectFromEndpoint(peerId);
       _connectedPeers.removeWhere((p) => p.id == peerId);
       _acceptedPeers.remove(peerId);
+      _connectedEndpoints.remove(peerId);
       return const Right(null);
     } catch (e) {
       return Left(P2PFailure('Disconnect Error: $e'));
@@ -463,8 +466,22 @@ class P2PRepositoryImpl implements P2PRepository {
   }
 
   // ============================================================
-  // PAYLOAD
+  // SENDING DATA (Broadcast & Single)
   // ============================================================
+
+  // 🆕 ส่งข้อมูลหาทุกคนที่เชื่อมต่ออยู่
+  @override
+  Future<Either<Failure, void>> broadcastMessage(String message) async {
+    try {
+      final bytes = Uint8List.fromList(message.codeUnits);
+      for (String peerId in _connectedEndpoints) {
+        await _nearby.sendBytesPayload(peerId, bytes);
+      }
+      return const Right(null);
+    } catch (e) {
+      return Left(P2PFailure('Broadcast Error: $e'));
+    }
+  }
 
   @override
   Future<Either<Failure, void>> sendPayload(
@@ -474,7 +491,7 @@ class P2PRepositoryImpl implements P2PRepository {
     try {
       await _nearby.sendBytesPayload(
         peerId,
-        Uint8List.fromList(message. codeUnits),
+        Uint8List.fromList(message.codeUnits),
       );
       return const Right(null);
     } catch (e) {
@@ -512,9 +529,11 @@ class P2PRepositoryImpl implements P2PRepository {
       _nearby.stopAllEndpoints();
 
       _discoveredPeers.clear();
-      _connectedPeers. clear();
+      _connectedPeers.clear();
       _pendingConnectionNames.clear();
       _acceptedPeers.clear();
+      _connectedEndpoints.clear();
+      
       _updatePeersStream();
 
       return const Right(null);
@@ -531,9 +550,9 @@ class P2PRepositoryImpl implements P2PRepository {
     _peerStreamController.add(List.from(_discoveredPeers));
   }
 
-  /// Dispose - เรียกเมื่อไม่ใช้แล้ว
   void dispose() {
     _retryTimer?.cancel();
     _peerStreamController.close();
+    _messageStreamController.close();
   }
 }

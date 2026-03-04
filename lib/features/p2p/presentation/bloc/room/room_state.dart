@@ -224,3 +224,17 @@ class RoomFullError extends RoomState {
   @override
   List<Object?> get props => [hostName];
 }
+
+// เอาไปวางไว้ล่างสุดของไฟล์ room_state.dart
+// 🆕 State สำหรับการอัปเดตพิกัดเรียลไทม์ในหน้า Tracking
+class RoomTrackingUpdated extends RoomState {
+  final List<PeerEntity> members;
+  const RoomTrackingUpdated({required this.members});
+  @override
+  List<Object?> get props => [members];
+}
+
+// 🆕 State ตอนเริ่มทริป (ให้ดึงคุณสมบัติมาจาก RoomTrackingUpdated เลย)
+class RoomTripStarted extends RoomTrackingUpdated {
+  const RoomTripStarted({required super.members});
+}

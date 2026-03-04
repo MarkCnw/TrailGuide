@@ -8,7 +8,8 @@ abstract class P2PState extends Equatable {
 }
 
 class P2PInitial extends P2PState {}
-
+// เพิ่ม State นี้เข้าไปเพื่อสั่งเปลี่ยนหน้าจอ
+class P2PTripStarted extends P2PState {}
 class P2PLoading extends P2PState {}
 
 class P2PUpdated extends P2PState {

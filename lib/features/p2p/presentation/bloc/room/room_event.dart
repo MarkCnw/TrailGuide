@@ -129,3 +129,34 @@ class PeerDisconnectedEvent extends RoomEvent {
 class ResetRoomEvent extends RoomEvent {
   const ResetRoomEvent();
 }
+// เอาไปวางไว้ล่างสุดของไฟล์ room_event.dart
+// 1. Event ที่ UI สั่งตอน Host กดปุ่ม
+class StartTripEvent extends RoomEvent {
+  @override
+  List<Object?> get props => [];
+}
+
+// 2. Event ที่ BLoC ของ Member ใช้ปลุกตัวเองตอนรับข้อความจาก Host
+class OnTripStartedByHostEvent extends RoomEvent {
+  @override
+  List<Object?> get props => [];
+}
+
+// 🆕 Event สั่งให้ RoomBloc ส่งพิกัดของตัวเองออกไปหาคนอื่น
+class SendMyLocationEvent extends RoomEvent {
+  final double latitude;
+  final double longitude;
+  const SendMyLocationEvent({required this.latitude, required this.longitude});
+  @override
+  List<Object?> get props => [latitude, longitude];
+}
+
+// 🆕 Event เมื่อได้รับพิกัดของเพื่อน ให้เอามาอัปเดตใน List
+class UpdatePeerLocationEvent extends RoomEvent {
+  final String peerId;
+  final double latitude;
+  final double longitude;
+  const UpdatePeerLocationEvent({required this.peerId, required this.latitude, required this.longitude});
+  @override
+  List<Object?> get props => [peerId, latitude, longitude];
+}

@@ -20,7 +20,7 @@ android {
 
     defaultConfig {
         applicationId = "com.markcnw.trail_guide"
-        minSdk = 23
+        minSdk = flutter.minSdkVersion
         targetSdk = 35  // ✅ เปลี่ยนเป็น 35 ด้วย
         versionCode = flutter.versionCode
         versionName = flutter.versionName
