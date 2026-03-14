@@ -53,15 +53,7 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   void _startDiscovery() {
-    // 1. สั่งหยุดของเก่าก่อนเพื่อล้าง Cache คลื่นวิทยุที่ค้างอยู่
-    context.read<P2PBloc>().add(StopDiscoveryEvent());
-    
-    // 2. หน่วงเวลา 0.3 วินาทีให้ฮาร์ดแวร์รีเซ็ต แล้วค่อยสแกนใหม่
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        context.read<P2PBloc>().add(StartDiscoveryEvent(_memberName));
-      }
-    });
+    context.read<P2PBloc>().add(StartDiscoveryEvent(_memberName));
   }
 
   @override
