@@ -112,7 +112,7 @@ class _LobbyPageState extends State<LobbyPage> {
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
+              context.go('/radar');
               _closeRoom();
             },
             style: ElevatedButton.styleFrom(
@@ -666,31 +666,31 @@ class _LobbyPageState extends State<LobbyPage> {
         ),
 
         // Close Room Button
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          child: SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: OutlinedButton.icon(
-              onPressed: _showCloseRoomDialog,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.red[600],
-                side: BorderSide(color: Colors.red[300]!),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              icon: const Icon(Icons.close_rounded),
-              label: const Text(
-                'Close Room',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ),
+        // Padding(
+        //   padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        //   child: SizedBox(
+        //     width: double.infinity,
+        //     height: 56,
+        //     child: OutlinedButton.icon(
+        //       onPressed: _showCloseRoomDialog,
+        //       style: OutlinedButton.styleFrom(
+        //         foregroundColor: Colors.red[600],
+        //         side: BorderSide(color: Colors.red[300]!),
+        //         shape: RoundedRectangleBorder(
+        //           borderRadius: BorderRadius.circular(16),
+        //         ),
+        //       ),
+        //       icon: const Icon(Icons.close_rounded),
+        //       label: const Text(
+        //         'Close Room',
+        //         style: TextStyle(
+        //           fontSize: 16,
+        //           fontWeight: FontWeight.bold,
+        //         ),
+        //       ),
+        //     ),
+        //   ),
+        // ),
       ],
     );
   }

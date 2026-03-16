@@ -95,8 +95,7 @@ class _RadarPageState extends State<RadarPage>
               // 🛑 2. ปิด GPS
               _locationBloc.add(StopTrackingEvent());
 
-              // 3. เด้งกลับไปแท็บ Home
-              context.go('/home');
+          
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red[600],
@@ -135,7 +134,7 @@ class _RadarPageState extends State<RadarPage>
                 backgroundColor: Colors.red[600],
               ),
             );
-            context.go('/home');
+            context.go('/radar');
           } else if (roomState is RoomLeft) {
             // กรณี Member (ตัวเรา) กดออกเอง
             ScaffoldMessenger.of(context).showSnackBar(

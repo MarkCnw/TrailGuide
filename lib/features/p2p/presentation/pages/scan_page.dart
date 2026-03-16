@@ -29,10 +29,14 @@ class _ScanPageState extends State<ScanPage> {
   String? _memberImageBase64;
 
   PeerEntity? _selectedHost;
+  // 🌟 1. ประกาศตัวแปรเก็บ P2PBloc ไว้
+  late final P2PBloc _p2pBloc;
 
   @override
   void initState() {
     super.initState();
+    // 🌟 2. ดึงค่า P2PBloc จาก context มาเก็บไว้ในตัวแปร ตั้งแต่ตอนหน้าจอยังสมบูรณ์
+    _p2pBloc = context.read<P2PBloc>();
     _loadMemberInfo();
     _startDiscovery();
   }
@@ -53,13 +57,14 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   void _startDiscovery() {
-    context.read<P2PBloc>().add(StartDiscoveryEvent(_memberName));
+    _p2pBloc.add(StartDiscoveryEvent(_memberName));
   }
 
   @override
   void dispose() {
     _passwordController.dispose();
-    context.read<P2PBloc>().add(StopDiscoveryEvent());
+    // 🌟 3. สั่งหยุดสแกนผ่านตัวแปร _p2pBloc โดยตรง (ห้ามใช้ context ตรงนี้เด็ดขาด)
+    _p2pBloc.add(StopDiscoveryEvent());
     super.dispose();
   }
 
@@ -281,9 +286,8 @@ class _ScanPageState extends State<ScanPage> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () {
-            // 🛑 หยุดการค้นหาคลื่น P2P ก่อนกลับ
-            context.read<P2PBloc>().add(StopDiscoveryEvent());
-            // 🚀 บังคับกลับไปที่หน้าโฮมเพจตรงๆ เลย
+            // 🛑 เรียกผ่านตัวแปรแทน
+            _p2pBloc.add(StopDiscoveryEvent());
             context.go('/radar');
           },
         ),
