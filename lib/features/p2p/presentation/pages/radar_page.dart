@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:go_router/go_router.dart';
 import 'package:trail_guide/core/utils/location_calculator.dart';
 import 'package:trail_guide/features/p2p/presentation/bloc/p2p/p2p_bloc.dart';
@@ -24,20 +25,13 @@ class RadarPage extends StatefulWidget {
   State<RadarPage> createState() => _RadarPageState();
 }
 
-class _RadarPageState extends State<RadarPage>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _radarController;
-  
+class _RadarPageState extends State<RadarPage> {
   // 🌟 ประกาศตัวแปรเก็บ LocationBloc เพื่อป้องกันบัค context พังตอนสลับหน้า
   late final LocationBloc _locationBloc;
 
   @override
   void initState() {
     super.initState();
-    _radarController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    )..repeat();
 
     // ดึงค่ามาเก็บไว้ในตัวแปรตั้งแต่เริ่มสร้างหน้าจอ
     _locationBloc = context.read<LocationBloc>();
@@ -50,7 +44,6 @@ class _RadarPageState extends State<RadarPage>
 
   @override
   void dispose() {
-    _radarController.dispose();
     // 🌟 สั่งหยุด GPS ผ่านตัวแปรตรงๆ ไม่มี Future.microtask หรือ context แล้ว
     _locationBloc.add(StopTrackingEvent());
     super.dispose();
@@ -94,8 +87,6 @@ class _RadarPageState extends State<RadarPage>
 
               // 🛑 2. ปิด GPS
               _locationBloc.add(StopTrackingEvent());
-
-          
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red[600],
@@ -278,12 +269,10 @@ class _RadarPageState extends State<RadarPage>
 
     List<PeerEntity> tripMembers = [];
     if (roomState is RoomTripStarted) {
-      // ดึงข้อมูลตอนเริ่มทริป
       tripMembers = roomState.members
           .where((m) => m.id != myDeviceId)
           .toList();
     } else if (roomState is RoomTrackingUpdated) {
-      // ดึงข้อมูลตอน GPS ขยับ
       tripMembers = roomState.members
           .where((m) => m.id != myDeviceId)
           .toList();
@@ -292,6 +281,7 @@ class _RadarPageState extends State<RadarPage>
     return Scaffold(
       backgroundColor: const Color(0xFF1E1E1E),
       appBar: AppBar(
+        // ... (โค้ด AppBar เหมือนเดิม) ...
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
@@ -309,146 +299,149 @@ class _RadarPageState extends State<RadarPage>
           ),
         ),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(
-              Icons.my_location_rounded,
-              color: Colors.greenAccent,
-            ),
-            onPressed: () {
-              // TODO: Re-center
-            },
-          ),
-        ],
       ),
-      // 🔥 รวบ BlocBuilder มาไว้ตรงนี้เลย ดึงพิกัดครั้งเดียวใช้ได้ทั้งหน้า!
+
+      // 📍 1. BlocBuilder ดึงพิกัด GPS (Lat, Lng) ที่อัปเดตช้ากว่า
       body: BlocBuilder<LocationBloc, LocationState>(
         builder: (context, locationState) {
           double? myLat;
           double? myLng;
 
-          // ดึงพิกัดของเราออกมา
           if (locationState is LocationTracking) {
             myLat = locationState.position.latitude;
             myLng = locationState.position.longitude;
           }
 
-          return Column(
-            children: [
-              // 📍 พิกัดตัวเอง
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 8,
-                  horizontal: 16,
-                ),
-                color: Colors.black45,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      myLat != null
-                          ? Icons.gps_fixed
-                          : Icons.gps_not_fixed,
-                      color: myLat != null
-                          ? Colors.greenAccent
-                          : Colors.orangeAccent,
-                      size: 16,
+          // 🧭 2. StreamBuilder ดึงทิศทางเข็มทิศ (Heading) ที่อัปเดตแบบ Real-time
+          return StreamBuilder<CompassEvent>(
+            stream: FlutterCompass.events,
+            builder: (context, snapshot) {
+              // 🟢 ดึงค่าทิศทางจากเซ็นเซอร์แม่เหล็ก (ถ้ายังไม่มีให้เป็น 0)
+              double myHeading = snapshot.data?.heading ?? 0.0;
+
+              return Column(
+                children: [
+                  // 📍 ป้ายบอกพิกัดตัวเอง
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 8,
+                      horizontal: 16,
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      myLat != null
-                          ? 'My GPS: ${myLat.toStringAsFixed(5)}, ${myLng!.toStringAsFixed(5)}'
-                          : 'Acquiring GPS Signal...',
-                      style: TextStyle(
-                        color: myLat != null
-                            ? Colors.greenAccent
-                            : Colors.orangeAccent,
-                        fontFamily: 'monospace',
+                    color: Colors.black45,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          myLat != null
+                              ? Icons.gps_fixed
+                              : Icons.gps_not_fixed,
+                          color: myLat != null
+                              ? Colors.greenAccent
+                              : Colors.orangeAccent,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          myLat != null
+                              ? 'My GPS: ${myLat.toStringAsFixed(5)}, ${myLng!.toStringAsFixed(5)}'
+                              : 'Acquiring GPS Signal...',
+                          style: TextStyle(
+                            color: myLat != null
+                                ? Colors.greenAccent
+                                : Colors.orangeAccent,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // 📡 เรดาร์วงกลม (ส่ง myHeading ของเข็มทิศเข้าไปคำนวณ)
+                  Expanded(
+                    flex: 3,
+                    child: Center(
+                      child: _buildRadarCircle(
+                        tripMembers,
+                        myLat,
+                        myLng,
+                        myHeading,
                       ),
                     ),
-                  ],
-                ),
-              ),
-
-              // 🧭 เรดาร์
-              Expanded(
-                flex: 3,
-                child: Center(
-                  // ✅ ส่งพิกัดตัวเองเข้าไปด้วย 3 ตัวแปรครบถ้วน
-                  child: _buildRadarCircle(tripMembers, myLat, myLng),
-                ),
-              ),
-
-              // 👥 รายชื่อเพื่อน
-              Expanded(
-                flex: 2,
-                child: Container(
-                  padding: const EdgeInsets.only(
-                    top: 24,
-                    left: 24,
-                    right: 24,
                   ),
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(32),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+
+                  // 👥 รายชื่อเพื่อนด้านล่าง (ส่ง myHeading ของเข็มทิศเข้าไปหมุนลูกศร)
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      padding: const EdgeInsets.only(
+                        top: 24,
+                        left: 24,
+                        right: 24,
+                      ),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(32),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Team Members',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black87,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.green[100],
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              '${tripMembers.length + 1} Connected',
-                              style: TextStyle(
-                                color: Colors.green[800],
-                                fontWeight: FontWeight.bold,
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Team Members',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
+                                ),
                               ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.green[100],
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  '${tripMembers.length + 1} Connected',
+                                  style: TextStyle(
+                                    color: Colors.green[800],
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Expanded(
+                            child: ListView.separated(
+                              itemCount: tripMembers.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 12),
+                              itemBuilder: (context, index) {
+                                return _buildMemberCard(
+                                  tripMembers[index],
+                                  myLat,
+                                  myLng,
+                                  myHeading, // 🟢 ส่งเข็มทิศเข้าไปให้ลูกศรหมุน
+                                );
+                              },
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      Expanded(
-                        child: ListView.separated(
-                          itemCount: tripMembers.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            // โยนพิกัดเพื่อน และพิกัดเรา เข้าไปคำนวณในการ์ด!
-                            return _buildMemberCard(
-                              tripMembers[index],
-                              myLat,
-                              myLng,
-                            );
-                          },
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           );
         },
       ),
@@ -460,6 +453,7 @@ class _RadarPageState extends State<RadarPage>
     List<PeerEntity> members,
     double? myLat,
     double? myLng,
+    double myHeading,
   ) {
     const double radarSize = 320.0;
     const double centerOffset = radarSize / 2;
@@ -494,8 +488,11 @@ class _RadarPageState extends State<RadarPage>
             member.longitude!,
           );
 
-          // 4. แปลงองศาเข็มทิศ (North=0) เป็นองศาคณิตศาสตร์ (Right=0) และเป็น Radians
-          double mathAngle = (bearing - 90) * (math.pi / 180);
+          // 🟢 2. ต้องเอามาหักลบกับเข็มทิศด้วยครับ (โค้ดนี้หลุดหายไป)
+          double relativeBearing = bearing - myHeading;
+
+          // 4. แปลงองศา
+          double mathAngle = (relativeBearing - 90) * (math.pi / 180);
 
           // 5. หาพิกัด X, Y บนหน้าจอ
           double x = centerOffset + (scaledRadius * math.cos(mathAngle));
@@ -504,7 +501,8 @@ class _RadarPageState extends State<RadarPage>
           // 6. สร้างจุดและเอาไปแปะในลิสต์
           radarBlips.add(
             Positioned(
-              left: x - 12, // ให้จุดอยู่กึ่งกลางพิกัดพอดี (ขนาดจุดคือ 24x24)
+              left:
+                  x - 12, // ให้จุดอยู่กึ่งกลางพิกัดพอดี (ขนาดจุดคือ 24x24)
               top: y - 12,
               child: _buildRadarDot(member),
             ),
@@ -572,32 +570,32 @@ class _RadarPageState extends State<RadarPage>
           ),
 
           // 📡 แสงเรดาร์หมุนๆ
-          Center(
-            child: AnimatedBuilder(
-              animation: _radarController,
-              builder: (context, child) {
-                return Transform.rotate(
-                  angle: _radarController.value * 2 * math.pi,
-                  child: Container(
-                    width: radarSize,
-                    height: radarSize,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: SweepGradient(
-                        colors: [
-                          Colors.greenAccent.withOpacity(0.0),
-                          Colors.greenAccent.withOpacity(0.5),
-                        ],
-                        stops: const [0.5, 1.0],
-                        startAngle: 0.0,
-                        endAngle: math.pi / 2,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
+          // Center(
+          //   child: AnimatedBuilder(
+          //     animation: _radarController,
+          //     builder: (context, child) {
+          //       return Transform.rotate(
+          //         angle: _radarController.value * 2 * math.pi,
+          //         child: Container(
+          //           width: radarSize,
+          //           height: radarSize,
+          //           decoration: BoxDecoration(
+          //             shape: BoxShape.circle,
+          //             gradient: SweepGradient(
+          //               colors: [
+          //                 Colors.greenAccent.withOpacity(0.0),
+          //                 Colors.greenAccent.withOpacity(0.5),
+          //               ],
+          //               stops: const [0.5, 1.0],
+          //               startAngle: 0.0,
+          //               endAngle: math.pi / 2,
+          //             ),
+          //           ),
+          //         ),
+          //       );
+          //     },
+          //   ),
+          // ),
 
           // 📍 วางจุดพิกัดเพื่อนลงบนเรดาร์
           ...radarBlips,
@@ -665,7 +663,12 @@ class _RadarPageState extends State<RadarPage>
   }
 
   // 🟢 ฟังก์ชันสร้างการ์ดรายชื่อเพื่อน (รับ 3 พารามิเตอร์)
-  Widget _buildMemberCard(PeerEntity member, double? myLat, double? myLng) {
+  Widget _buildMemberCard(
+    PeerEntity member,
+    double? myLat,
+    double? myLng,
+    double myHeading,
+  ) {
     final imageBytes = ImageHelper.decodeBase64(member.imageBase64);
 
     // 🧮 ตัวแปรสำหรับคำนวณ
@@ -703,7 +706,12 @@ class _RadarPageState extends State<RadarPage>
         member.latitude!,
         member.longitude!,
       );
-      bearingAngle = bearingInDegrees * (math.pi / 180);
+      // 🚀 [จุดที่ต้องแก้] ต้องเอาทิศทางเป้าหมาย มาลบกับทิศที่เรากำลังหันหน้าอยู่ (myHeading)
+      final relativeBearing = bearingInDegrees - myHeading; 
+      
+      // แล้วค่อยแปลงเป็นเรเดียน
+      bearingAngle = relativeBearing * (math.pi / 180);
+
     }
 
     return Container(

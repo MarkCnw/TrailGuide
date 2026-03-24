@@ -60,6 +60,7 @@ dependencies:
   shimmer: ^3.0.0
   flutter_svg: ^2.2.3
   font_awesome_flutter: ^10.9.1
+  flutter_compass: ^0.8.1
 
 dev_dependencies:
   flutter_test:
