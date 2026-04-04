@@ -1,16 +1,47 @@
-# trail_guide
+🌲 TrailGuide: Offline Hiking Companion
+📖 Overview (แอปคืออะไร)
 
-A new Flutter project.
+TrailGuide คือแอปพลิเคชันบนมือถือสำหรับสายเดินป่า (Hiking Safety App) ที่ออกแบบมาเพื่อเป็นเครื่องมือติดตามและสื่อสารภายในทีม โดยจุดเด่นที่สุดคือ สามารถทำงานได้ 100% แม้อยู่ในพื้นที่อับสัญญาณอินเทอร์เน็ต (Zero-Cellular Coverage) ตัวแอปทำหน้าที่เป็นทั้งเรดาร์ติดตามตัวและวิทยุสื่อสารฉุกเฉินประจำกลุ่ม เพื่อความปลอดภัยสูงสุดตลอดทริปการเดินทาง
+🎯 Problem (แก้ปัญหาอะไร)
 
-## Getting Started
+ปัญหาคลาสสิกและอันตรายที่สุดของการเดินป่าคือ "การพลัดหลงในจุดที่ไม่มีสัญญาณเน็ต"
+เมื่อสมาชิกในทีมเดินทิ้งระยะห่างกันเกินไป หรือเกิดอุบัติเหตุฉุกเฉินกลางป่า พวกเขาจะไม่สามารถโทรศัพท์ ส่งข้อความ หรือแชร์โลเคชั่นหาเพื่อนในทีมได้เลย TrailGuide จึงถูกสร้างขึ้นมาเพื่ออุดช่องโหว่นี้ โดยการสร้างเครือข่ายสัญญาณส่วนตัว (Local Network) ขึ้นมาใช้เองภายในกลุ่ม
+✨ Features
 
-This project is a starting point for a Flutter application.
+    📡 Offline P2P Networking: สร้างกลุ่ม (Host) และเข้าร่วมกลุ่ม (Member) เพื่อเชื่อมต่อกันได้โดยไม่ต้องใช้ Wi-Fi, 4G/5G, รหัสผ่าน หรือสแกน QR Code
 
-A few resources to get you started if this is your first Flutter project:
+    🧭 Team Radar & Tracking: หน้าจอเรดาร์แสดงตำแหน่งเพื่อนในทีมแบบ Real-time พร้อมบอกระยะห่าง (เมตร/กิโลเมตร) และมีเข็มทิศชี้ทิศทางเป้าหมายอย่างแม่นยำ
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+    🚨 Emergency SOS Alert: ปุ่มกดส่งสัญญาณขอความช่วยเหลือฉุกเฉิน ที่สามารถยิงทะลุไปบังคับเปิดหน้าต่างแจ้งเตือน (Pop-up) สีแดงบนหน้าจอเพื่อนทุกคนในระยะสัญญาณทันที
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+    ⚠️ Out-of-Range Alerts: ระบบแจ้งเตือนอัตโนมัติเมื่อมีสมาชิกเดินห่างออกไปเกินระยะปลอดภัย (เช่น 80 เมตร) หรือเมื่อสัญญาณการเชื่อมต่อของเพื่อนขาดหายไป (Offline Indicator)
+
+    🌙 Tactical Dark UI: อินเทอร์เฟซโหมดมืดที่ออกแบบมาเพื่อความสบายตาเวลาใช้งานกลางคืน และช่วยประหยัดแบตเตอรี่โทรศัพท์อย่างขีดสุด
+
+🛠️ Tech Stack
+
+    Frontend: Flutter (Dart)
+
+    State Management: BLoC Pattern (flutter_bloc)
+
+    Networking: P2P Offline Communication (Device-to-Device Payload Transmission)
+
+    Sensors & Calculation: Geolocation (GPS), flutter_compass (Hardware Magnetic Compass), Math (Haversine Formula for Distance & Bearing calculation)
+
+🏗️ Architecture Diagram
+
+    P2P Topology (Star/Mesh Hybrid): > ระบบใช้ Host เป็นศูนย์กลาง (Relay Station) ในการกระจายพิกัด GPS และคำสั่ง SOS. เมื่อ Member A ส่งพิกัด หรือกด SOS ข้อความจะวิ่งไปที่ Host จากนั้น Host จะทำหน้าที่กระจายข่าวให้ Member B, C, D อัตโนมัติ ทำให้ทุกคนเห็นข้อมูลตรงกันทั้งหมด
+
+    State Management: > ใช้ RoomBloc จัดการสถานะห้องและเครือข่าย และใช้ LocationBloc จัดการข้อมูลพิกัด เซ็นเซอร์แยกออกจากลอจิก UI อย่างเด็ดขาด ป้องกันแอปกระตุกเมื่อข้อมูลวิ่งชนกัน
+
+🎥 Demo (GIF / Video)
+
+⚙️ How it works (Flow)
+
+การทำงานของ TrailGuide แบ่งเป็น 3 ขั้นตอนง่ายๆ:
+
+    Create / Join Team: เมื่อถึงจุดรวมพล คนที่เป็นหัวหน้าแก๊งจะกด "Create Room" (ทำหน้าที่เป็น Host) ส่วนลูกทีมกด "Join Room" ระบบจะค้นหาและเชื่อมต่อกันผ่าน P2P อัตโนมัติ
+
+    Start Adventure (Radar Active): เมื่อ Host กดเริ่มทริป หน้าจอทุกคนจะเปลี่ยนเป็น "Radar Page" ระบบจะเริ่มดูดพิกัด GPS และเข็มทิศ (Heading) มาคำนวณระยะห่าง (Distance) และมุม (Bearing) เพื่อวาดจุดพิกัดเพื่อนลงบนหน้าจอเรดาร์
+
+    Tracking & SOS: ระหว่างเดิน หากเพื่อนอยู่ห่างเกิน 80 เมตร ระบบจะเตือนด้วย SnackBar สีส้ม และหากมีคนกดปุ่ม SOS (ปุ่มแดงมุมล่าง) BLoC จะแพ็กคำสั่งพิเศษส่งผ่านคลื่น P2P ไปกระแทกหน้าจอเพื่อนทุกคนให้ขึ้นหน้าต่างแจ้งเตือนฉุกเฉินทันที
