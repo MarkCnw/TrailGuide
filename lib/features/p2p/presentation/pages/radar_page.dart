@@ -165,8 +165,6 @@ class _RadarPageState extends State<RadarPage> {
       child: BlocConsumer<RoomBloc, RoomState>(
         buildWhen: (previous, current) {
           return current is! RoomMemberLeft && 
-                 current is! RoomClosedByHost && 
-                 current is! RoomLeft&&
                  current is! RoomSOSReceivedAlert;
         },
         listener: (context, roomState) {
@@ -178,7 +176,7 @@ class _RadarPageState extends State<RadarPage> {
                 backgroundColor: Colors.red[600],
               ),
             );
-            context.go('/radar');
+            context.go('/home');
           } else if (roomState is RoomLeft) {
             // กรณี Member (ตัวเรา) กดออกเอง
             ScaffoldMessenger.of(context).showSnackBar(

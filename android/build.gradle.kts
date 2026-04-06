@@ -8,32 +8,43 @@ allprojects {
 val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
 rootProject.layout.buildDirectory.value(newBuildDir)
 
-// 🛠️ FIX ISAR NAMESPACE ISSUE
+// 🛠️ รวม afterEvaluate ทั้งหมดไว้ในบล็อกเดียว (วางไว้ก่อน evaluationDependsOn)
 subprojects {
     afterEvaluate {
+        // 1. FIX ISAR NAMESPACE ISSUE
         if (name == "isar_flutter_libs") {
             try {
-                val android = extensions.findByName("android") as? com.android.build.gradle.LibraryExtension
-                android?.namespace = "dev.isar.isar_flutter_libs"
+                val androidExt = extensions.findByName("android") as? com.android.build.gradle.LibraryExtension
+                androidExt?.namespace = "dev.isar.isar_flutter_libs"
             } catch (e: Exception) {
                 println("Could not set namespace for isar_flutter_libs: $e")
             }
         }
-    }
-}
 
-// ✅ เพิ่มส่วนนี้ - บังคับให้ทุก subproject ใช้ compileSdk 35
-subprojects {
-    afterEvaluate {
+        // 2. บังคับ compileSdk 35 และแก้ Error: mergeDebugJavaResource
         if (project.hasProperty("android")) {
-            val android = project.extensions.findByName("android")
+            val androidExt = project.extensions.findByName("android")
             
-            when (android) {
+            when (androidExt) {
                 is com.android.build.gradle.LibraryExtension -> {
-                    android.compileSdk = 35
+                    androidExt.compileSdk = 35
+                    
+                    // ใส่ Packaging Options ตรงนี้เลย
+                    androidExt.packaging {
+                        resources {
+                            pickFirsts.add("META-INF/LICENSE.md")
+                            pickFirsts.add("META-INF/LICENSE-notice.md")
+                            pickFirsts.add("META-INF/NOTICE.md")
+                            pickFirsts.add("META-INF/NOTICE.txt")
+                            excludes.add("META-INF/DEPENDENCIES")
+                            excludes.add("META-INF/LICENSE")
+                            excludes.add("META-INF/NOTICE")
+                            excludes.add("META-INF/*.kotlin_module")
+                        }
+                    }
                 }
                 is com.android.build.gradle.AppExtension -> {
-                    android.compileSdkVersion(35)
+                    androidExt.compileSdkVersion(35)
                 }
             }
         }
@@ -45,6 +56,7 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 
+// คำสั่งนี้ต้องอยู่ล่างสุด หลังจาก afterEvaluate ด้านบนทำงานเสร็จแล้ว
 subprojects {
     project.evaluationDependsOn(":app")
 }

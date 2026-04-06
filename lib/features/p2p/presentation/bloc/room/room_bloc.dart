@@ -168,7 +168,7 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
 
   void _checkConnections() {
     final now = DateTime.now();
-    final timeout = const Duration(seconds: 30);
+    final timeout = const Duration(seconds: 5);
 
     if (isHost) {
       final disconnectedMembers = <String>[];
@@ -846,57 +846,55 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     Emitter<RoomState> emit,
   ) async {
     _lastPingTime.remove(event.peerId);
-    final currentState = state;
+    //final currentState = state;
+    bool isTracking = _heartbeatTimer != null && _heartbeatTimer!.isActive;
 
     if (isHost) {
       final index = _connectedMembers.indexWhere(
         (m) => m.id == event.peerId,
       );
-     
+
       if (index != -1) {
         final disconnectedMember = _connectedMembers[index];
         final disconnectedName = _connectedMembers[index].name;
-        _connectedMembers[index] = _connectedMembers[index].copyWith(
+        _connectedMembers[index] = disconnectedMember.copyWith(
           isActive: false,
         );
-        
+        if (isTracking) {
+          emit(RoomTrackingUpdated(members: List.from(_connectedMembers)));
+        }
+        else if (_currentRoom != null) {
+          emit(RoomCreated(room: _currentRoom!, connectedMembers: List.from(_connectedMembers), hostName: _hostName, hostImageBase64: _hostImageBase64));
+        }
+
         emit(RoomMemberLeft(memberName: disconnectedName));
         await Future.delayed(const Duration(milliseconds: 100));
-
-        if (_currentRoom != null) {
-          final leftNotification = RoomMessage.memberLeft(
-            hostId: _deviceId,
-            hostName: _currentRoom!.hostName,
-            leftMemberId: disconnectedMember.id,
-            leftMemberName: disconnectedMember.name,
-            currentMemberCount: _connectedMembers.length,
-            maxMembers: _currentRoom!.maxMembers,
-          );
-          await _broadcastToAllMembers(leftNotification);
-        }
-
-        // 🔥 ไฮไลท์การแก้บัค: ป้องกันเรดาร์พังตอนเพื่อนสัญญาณหลุด
-        if (currentState is RoomTripStarted ||
-            state is RoomTrackingUpdated) {
-          // ถ้าเดินป่าอยู่ -> วาดเรดาร์ต่อ แค่เพื่อนหายไปจากจอ
-          emit(RoomTrackingUpdated(members: List.from(_connectedMembers)));
-        } else {
-          // ถ้ายังไม่เริ่มทริป -> อัปเดตรายชื่อใน Lobby
+        try {
           if (_currentRoom != null) {
-            emit(
-              RoomCreated(
-                room: _currentRoom!,
-                connectedMembers: List.from(_connectedMembers),
-                hostName: _hostName,
-                hostImageBase64: _hostImageBase64,
-              ),
+            final leftNotification = RoomMessage.memberLeft(
+              hostId: _deviceId,
+              hostName: _currentRoom!.hostName,
+              leftMemberId: disconnectedMember.id,
+              leftMemberName: disconnectedName,
+              currentMemberCount: _connectedMembers.length,
+              maxMembers: _currentRoom!.maxMembers,
             );
+            await _broadcastToAllMembers(leftNotification);
           }
-        }
+        } catch (_) {}
+        
       } else if (isMember) {
         // สำหรับ Member ถ้า Host หลุด -> วงแตก
         if (event.peerId == _hostPeerId) {
           _stopKeepAlive();
+          _heartbeatTimer?.cancel();
+          try{
+            if (_hostPeerId != null) {
+            await _repository.disconnectFromPeer(_hostPeerId!);
+          }
+          await _repository.stopAll();
+        } catch (_) {}
+          
           _hostPeerId = null;
           _currentRole = RoomRole.none;
           _allMembersForMember.clear();

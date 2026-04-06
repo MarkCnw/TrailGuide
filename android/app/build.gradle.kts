@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.markcnw.trail_guide"
-    compileSdk = 35  // ✅ เปลี่ยนเป็น 35
+    compileSdk = 35
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -21,7 +21,7 @@ android {
     defaultConfig {
         applicationId = "com.markcnw.trail_guide"
         minSdk = flutter.minSdkVersion
-        targetSdk = 35  // ✅ เปลี่ยนเป็น 35 ด้วย
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
@@ -29,6 +29,14 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    packaging {
+        resources {
+            excludes.add("META-INF/**/*.kotlin_module")
+            excludes.add("**/module-info.class")
+            pickFirsts.add("META-INF/**/*")
         }
     }
 }
