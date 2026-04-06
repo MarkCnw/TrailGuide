@@ -216,3 +216,12 @@ class RoomMemberLeft extends RoomState {
   @override
   List<Object?> get props => [memberName, timestamp];
 }
+// 🚨 State สำหรับแจ้งเตือนตอนมีคนกดปุ่ม SOS
+class RoomSOSReceivedAlert extends RoomState {
+  final String senderName;
+  const RoomSOSReceivedAlert({required this.senderName});
+
+  @override
+  // ใส่ DateTime.now() เพื่อบังคับให้ BLoC ยิง State ซ้ำได้ (เผื่อเพื่อนกด SOS รัวๆ)
+  List<Object> get props => [senderName, DateTime.now()]; 
+}

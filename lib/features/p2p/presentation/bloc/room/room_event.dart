@@ -163,3 +163,8 @@ class UpdatePeerLocationEvent extends RoomEvent {
   @override
   List<Object?> get props => [peerId, latitude, longitude];
 }
+class SendSOSEvent extends RoomEvent {}
+class OnSOSReceivedEvent extends RoomEvent {
+  final String senderName;
+  const OnSOSReceivedEvent({required this.senderName});
+}
