@@ -792,6 +792,7 @@ class _RadarPageState extends State<RadarPage> {
   }
 
   // 🟢 ฟังก์ชันสร้างการ์ดรายชื่อเพื่อน (รับ 3 พารามิเตอร์)
+  // 🟢 ฟังก์ชันสร้างการ์ดรายชื่อเพื่อน (อัปเกรดระบบ Dead Zone และ Offline)
   Widget _buildMemberCard(
     PeerEntity member,
     double? myLat,
@@ -804,6 +805,12 @@ class _RadarPageState extends State<RadarPage> {
     String distanceText = 'Waiting for GPS...';
     double bearingAngle = 0.0;
     bool canCalculate = false;
+    bool isTooClose = false; // 🟢 เพิ่มตัวแปรเช็กระยะประชิด
+
+    // ถ้าเพื่อนสัญญาณหาย (Offline) ให้โชว์ข้อความแจ้งเตือนแทน
+    if (!member.isActive) {
+      distanceText = 'Offline (Last known location)';
+    }
 
     // ถ้าทั้งคู่มีพิกัด GPS -> เริ่มคำนวณเลย!
     if (myLat != null &&
@@ -820,12 +827,18 @@ class _RadarPageState extends State<RadarPage> {
         member.longitude!,
       );
 
-      // จัด Format ให้ดูสวย (ถ้าเกิน 1000m ให้โชว์เป็น km)
-      if (distanceInMeters >= 1000) {
-        distanceText =
-            '${(distanceInMeters / 1000).toStringAsFixed(1)} km away';
-      } else {
-        distanceText = '${distanceInMeters.toStringAsFixed(0)} m away';
+      // 🟢 เช็กว่าอยู่ใกล้กว่า 10 เมตรไหม (ป้องกัน GPS เพี้ยน)
+      isTooClose = distanceInMeters < 10.0;
+
+      // จัด Format ให้ดูสวย (เช็กเรื่อง Offline ด้วย)
+      if (member.isActive) {
+        if (isTooClose) {
+          distanceText = 'Near you'; // 🟢 อยู่ใกล้เกินไป ไม่ต้องโชว์ตัวเลข
+        } else if (distanceInMeters >= 1000) {
+          distanceText = '${(distanceInMeters / 1000).toStringAsFixed(1)} km away';
+        } else {
+          distanceText = '${distanceInMeters.toStringAsFixed(0)} m away';
+        }
       }
 
       // 2. คำนวณทิศทาง (องศา) แล้วแปลงเป็นเรเดียนสำหรับหมุนไอคอน
@@ -835,7 +848,8 @@ class _RadarPageState extends State<RadarPage> {
         member.latitude!,
         member.longitude!,
       );
-      // 🚀 [จุดที่ต้องแก้] ต้องเอาทิศทางเป้าหมาย มาลบกับทิศที่เรากำลังหันหน้าอยู่ (myHeading)
+      
+      // เอาทิศทางเป้าหมาย มาลบกับทิศที่เรากำลังหันหน้าอยู่ (myHeading)
       final relativeBearing = bearingInDegrees - myHeading;
 
       // แล้วค่อยแปลงเป็นเรเดียน
@@ -853,9 +867,10 @@ class _RadarPageState extends State<RadarPage> {
         children: [
           CircleAvatar(
             radius: 24,
-            backgroundColor: member.isHost
-                ? Colors.green[100]
-                : Colors.blue[100],
+            // 🟢 เปลี่ยนสีพื้นหลังเป็นเทาถ้าออฟไลน์
+            backgroundColor: !member.isActive
+                ? Colors.grey[300]
+                : (member.isHost ? Colors.green[100] : Colors.blue[100]),
             backgroundImage: imageBytes != null
                 ? MemoryImage(imageBytes)
                 : null,
@@ -865,9 +880,10 @@ class _RadarPageState extends State<RadarPage> {
                         ? member.name[0].toUpperCase()
                         : '?',
                     style: TextStyle(
-                      color: member.isHost
-                          ? Colors.green[700]
-                          : Colors.blue[700],
+                      // 🟢 เปลี่ยนสีตัวอักษรเป็นเทาถ้าออฟไลน์
+                      color: !member.isActive
+                          ? Colors.grey[600]
+                          : (member.isHost ? Colors.green[700] : Colors.blue[700]),
                       fontWeight: FontWeight.bold,
                     ),
                   )
@@ -883,10 +899,11 @@ class _RadarPageState extends State<RadarPage> {
                   children: [
                     Text(
                       member.name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
-                        color: Colors.black87,
+                        // 🟢 ดรอปสีชื่อเพื่อนถ้าออฟไลน์
+                        color: !member.isActive ? Colors.grey[500] : Colors.black87,
                       ),
                     ),
                     if (member.isHost) ...[
@@ -894,7 +911,7 @@ class _RadarPageState extends State<RadarPage> {
                       Icon(
                         Icons.star_rounded,
                         size: 16,
-                        color: Colors.amber[600],
+                        color: !member.isActive ? Colors.grey[400] : Colors.amber[600],
                       ),
                     ],
                   ],
@@ -904,25 +921,29 @@ class _RadarPageState extends State<RadarPage> {
                 Row(
                   children: [
                     Icon(
-                      canCalculate
-                          ? Icons.social_distance_rounded
-                          : Icons.location_off_rounded,
+                      !member.isActive 
+                          ? Icons.wifi_off_rounded // ไอคอนเน็ตตัดถ้าออฟไลน์
+                          : (canCalculate ? Icons.social_distance_rounded : Icons.location_off_rounded),
                       size: 14,
-                      color: canCalculate
-                          ? Colors.green[600]
-                          : Colors.grey[500],
+                      color: (!member.isActive || !canCalculate)
+                          ? Colors.grey[500]
+                          : Colors.green[600],
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      distanceText,
-                      style: TextStyle(
-                        color: canCalculate
-                            ? Colors.grey[800]
-                            : Colors.grey[500],
-                        fontSize: 13,
-                        fontWeight: canCalculate
-                            ? FontWeight.w600
-                            : FontWeight.normal,
+                    Expanded(
+                      child: Text(
+                        distanceText,
+                        style: TextStyle(
+                          color: (!member.isActive || !canCalculate)
+                              ? Colors.grey[500]
+                              : Colors.grey[800],
+                          fontSize: 13,
+                          fontWeight: (!member.isActive || !canCalculate)
+                              ? FontWeight.normal
+                              : FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -935,16 +956,27 @@ class _RadarPageState extends State<RadarPage> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: canCalculate ? Colors.green[50] : Colors.grey[100],
+              // 🟢 ปรับสีพื้นหลังไอคอน
+              color: (!member.isActive || !canCalculate) 
+                  ? Colors.grey[200] 
+                  : Colors.green[50],
               shape: BoxShape.circle,
             ),
             child: Transform.rotate(
-              angle: canCalculate
-                  ? bearingAngle
-                  : math.pi / 4, // ถ้ายังไม่มี GPS ให้ชี้เฉียงๆ ไว้ก่อน
+              // 🟢 ถ้าอยู่ใกล้เกินไป (isTooClose) หรือออฟไลน์ ให้ล็อกเป็น 0 องศาไปเลย
+              angle: (canCalculate && !isTooClose && member.isActive) 
+                  ? bearingAngle 
+                  : 0.0,
               child: Icon(
-                Icons.navigation_rounded,
-                color: canCalculate ? Colors.green[600] : Colors.grey[400],
+                // 🟢 ถ้าใกล้เกิน 10 เมตร เปลี่ยนเป็นรูปเป้าหมายวงกลม
+                isTooClose && member.isActive
+                    ? Icons.adjust_rounded 
+                    : (canCalculate && member.isActive 
+                        ? Icons.navigation_rounded 
+                        : Icons.location_off_rounded),
+                color: (!member.isActive || !canCalculate) 
+                    ? Colors.grey[400] 
+                    : Colors.green[600],
                 size: 20,
               ),
             ),
