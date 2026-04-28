@@ -69,6 +69,9 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     on<ResetRoomEvent>(_onReset);
     on<SendMyLocationEvent>(_onSendMyLocation);
     on<UpdatePeerLocationEvent>(_onUpdatePeerLocation);
+    on<RoomSendSOSEvent>(_onSendSOS);
+    on<RoomCancelSOSEvent>(_onCancelSOS);
+    
 
     // 🆕 Event สำหรับเริ่มทริป
     on<StartTripEvent>(_onStartTrip);
@@ -77,6 +80,16 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
 
     // Generate Device ID
     _deviceId = 'device_${DateTime.now().millisecondsSinceEpoch}';
+
+    // ใส่ไว้ใน constructor ของ RoomBloc
+    on<OnSOSReceivedEvent>((event, emit) {
+      // เมื่อรับคลื่น SOS มา ให้เปลี่ยน State ทันที!
+      emit(RoomEmergencyState(
+        senderId: event.senderName, 
+        latitude: 0, 
+        longitude: 0
+      ));
+    });
   }
 
   /// Getters
@@ -126,6 +139,42 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     }
   }
 
+  // ============================================================
+  // 🚨 ฟังก์ชันจัดการ SOS 🚨
+  // ============================================================
+  Future<void> _onSendSOS(
+    RoomSendSOSEvent event,
+    Emitter<RoomState> emit,
+  ) async {
+    try {
+      // 1. เพื่อความรวดเร็วสุดๆ ให้ส่งเป็น String แบบเดียวกับ LOC: (พิกัด)
+      // โครงสร้าง "SOS:[ชื่อคนส่ง],[lat],[lng]"
+      final sosString =
+          "SOS:$_memberName,${event.latitude},${event.longitude}";
+
+      // 2. กระจายสัญญาณให้ทุกคน
+      await _broadcastToAllMembersRaw(sosString);
+
+      // 3. ทำให้หน้าจอตัวเองแดงด้วย (เผื่อเพื่อนเดินมาดูเครื่องเรา)
+      emit(
+        RoomEmergencyState(
+          senderId: "คุณ ($_memberName)",
+          latitude: event.latitude,
+          longitude: event.longitude,
+        ),
+      );
+    } catch (e) {
+      print("SOS ส่งไม่สำเร็จ: $e");
+    }
+  }
+
+  Future<void> _onCancelSOS(
+    RoomCancelSOSEvent event,
+    Emitter<RoomState> emit,
+  ) async {
+    // TODO: ใส่โค้ดยกเลิกภายหลัง ตอนนี้ใส่โครงว่างๆ ไว้ก่อนไม่ให้ Error
+  }
+
   void _startKeepAlive() {
     _stopKeepAlive();
 
@@ -165,6 +214,7 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
       await _repository.sendPayload(_hostPeerId!, pingMessage.toJson());
     }
   }
+  
 
   void _checkConnections() {
     final now = DateTime.now();
@@ -862,9 +912,15 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
         );
         if (isTracking) {
           emit(RoomTrackingUpdated(members: List.from(_connectedMembers)));
-        }
-        else if (_currentRoom != null) {
-          emit(RoomCreated(room: _currentRoom!, connectedMembers: List.from(_connectedMembers), hostName: _hostName, hostImageBase64: _hostImageBase64));
+        } else if (_currentRoom != null) {
+          emit(
+            RoomCreated(
+              room: _currentRoom!,
+              connectedMembers: List.from(_connectedMembers),
+              hostName: _hostName,
+              hostImageBase64: _hostImageBase64,
+            ),
+          );
         }
 
         emit(RoomMemberLeft(memberName: disconnectedName));
@@ -882,19 +938,18 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
             await _broadcastToAllMembers(leftNotification);
           }
         } catch (_) {}
-        
       } else if (isMember) {
         // สำหรับ Member ถ้า Host หลุด -> วงแตก
         if (event.peerId == _hostPeerId) {
           _stopKeepAlive();
           _heartbeatTimer?.cancel();
-          try{
+          try {
             if (_hostPeerId != null) {
-            await _repository.disconnectFromPeer(_hostPeerId!);
-          }
-          await _repository.stopAll();
-        } catch (_) {}
-          
+              await _repository.disconnectFromPeer(_hostPeerId!);
+            }
+            await _repository.stopAll();
+          } catch (_) {}
+
           _hostPeerId = null;
           _currentRole = RoomRole.none;
           _allMembersForMember.clear();
@@ -949,6 +1004,18 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
       if (rawString == "CMD:START_TRIP") {
         print("🚀 ได้รับคำสั่ง START จาก Host แล้ว!");
         add(OnTripStartedByHostEvent());
+        return;
+      }
+
+      // 🚨 🆕 ดักจับสัญญาณฉุกเฉิน (SOS) ที่เพื่อนส่งมา! 🚨
+      if (rawString.startsWith("SOS:")) {
+        final parts = rawString.split(',');
+        if (parts.length == 3) {
+          final senderName = parts[0].substring(4); // ตัดคำว่า "SOS:" ออก
+
+          // โยนเข้า Event เพื่อให้ BLoC เปลี่ยน State หน้าจอแดงทันที
+          add(OnSOSReceivedEvent(senderName: senderName));
+        }
         return;
       }
 
@@ -1112,4 +1179,6 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     }
     return []; // ถ้าเป็น State อื่นๆ (เช่น Initial, Closed) ให้คืนค่าเป็น List ว่าง
   }
+
+  
 }

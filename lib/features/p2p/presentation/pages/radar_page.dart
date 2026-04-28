@@ -43,44 +43,61 @@ class _RadarPageState extends State<RadarPage> {
       _locationBloc.add(StartTrackingEvent());
     });
   }
+
   // 🟢 2. ฟังก์ชันเช็กระยะห่างเพื่อน (พร้อมระบบ Cooldown กันแจ้งเตือนสแปม)
-  void _checkMemberDistances(List<PeerEntity> members, double myLat, double myLng) {
+  void _checkMemberDistances(
+    List<PeerEntity> members,
+    double myLat,
+    double myLng,
+  ) {
     for (var member in members) {
-      if (member.latitude != null && member.longitude != null && member.isActive) {
+      if (member.latitude != null &&
+          member.longitude != null &&
+          member.isActive) {
         double distance = LocationCalculator.calculateDistance(
-          myLat, myLng, member.latitude!, member.longitude!,
+          myLat,
+          myLng,
+          member.latitude!,
+          member.longitude!,
         );
 
         // ถ้าห่างเกิน 80 เมตร และยังไม่เคยแจ้งเตือน
         if (distance >= 80.0) {
           if (!_warnedMembers.contains(member.id)) {
             _warnedMembers.add(member.id); // จำไว้ว่าเตือนคนนี้ไปแล้ว
-            
+
             // รอให้หน้าจอวาดเสร็จก่อน แล้วค่อยเด้ง SnackBar
             WidgetsBinding.instance.addPostFrameCallback((_) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Row(
                     children: [
-                      const Icon(Icons.warning_amber_rounded, color: Colors.white),
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.white,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           'ระวัง! ${member.name} อยู่ห่างเกิน 80 เมตร',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ],
                   ),
                   backgroundColor: Colors.orange[700],
                   behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   duration: const Duration(seconds: 4),
                 ),
               );
             });
           }
-        } 
+        }
         // ถ้าระยะกลับมาใกล้กว่า 60 เมตร -> ให้รีเซ็ตค่าเพื่อเปิดโอกาสให้เตือนใหม่ได้ในอนาคต
         else if (distance < 60.0) {
           _warnedMembers.remove(member.id);
@@ -164,8 +181,8 @@ class _RadarPageState extends State<RadarPage> {
       },
       child: BlocConsumer<RoomBloc, RoomState>(
         buildWhen: (previous, current) {
-          return current is! RoomMemberLeft && 
-                 current is! RoomSOSReceivedAlert;
+          return current is! RoomMemberLeft &&
+              current is! RoomEmergencyState; // 🟢 1. แก้เป็นตัวนี้
         },
         listener: (context, roomState) {
           if (roomState is RoomClosedByHost) {
@@ -186,59 +203,88 @@ class _RadarPageState extends State<RadarPage> {
               ),
             );
             context.go('/home');
-          }
-          else if (roomState is RoomMemberLeft) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Row(
-                    children: [
-                      const Icon(Icons.wifi_off_rounded, color: Colors.white),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          '${roomState.memberName} ขาดการเชื่อมต่อ!',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+          } else if (roomState is RoomMemberLeft) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(
+                      Icons.wifi_off_rounded,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '${roomState.memberName} ขาดการเชื่อมต่อ!',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ],
-                  ),
-                  backgroundColor: Colors.red[600],
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  duration: const Duration(seconds: 5), // โชว์นานหน่อยเพราะเป็นเรื่องซีเรียส
+                    ),
+                  ],
                 ),
-              );
-            }
-            else if (roomState is RoomSOSReceivedAlert) {
+                backgroundColor: Colors.red[600],
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                duration: const Duration(
+                  seconds: 5,
+                ), // โชว์นานหน่อยเพราะเป็นเรื่องซีเรียส
+              ),
+            );
+          } else if (roomState is RoomEmergencyState) {
+            // 🟢 2. ดัก State ฉุกเฉิน
             showDialog(
               context: context,
-              barrierDismissible: false, // บังคับให้ต้องกดปุ่มรับทราบถึงจะปิดได้
+              barrierDismissible: false,
               builder: (context) => AlertDialog(
                 backgroundColor: Colors.red[900],
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
                 title: const Row(
                   children: [
-                    Icon(Icons.warning_amber_rounded, color: Colors.white, size: 40),
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.white,
+                      size: 40,
+                    ),
                     SizedBox(width: 10),
-                    Text('SOS ALERT!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 24)),
+                    Text(
+                      'SOS ALERT!',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 24,
+                      ),
+                    ),
                   ],
                 ),
                 content: Text(
-                  '${roomState.senderName} ต้องการความช่วยเหลือด่วน!\nโปรดเช็กพิกัดบนเรดาร์และรีบไปหาทันที!',
-                  style: const TextStyle(color: Colors.white, fontSize: 18),
+                  // 🟢 3. ใช้ roomState.senderId แทน
+                  '${roomState.senderId} ต้องการความช่วยเหลือด่วน!\nโปรดเช็กพิกัดบนเรดาร์และรีบไปหาทันที!',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                  ),
                 ),
                 actions: [
                   ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.red[900]),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.red[900],
+                    ),
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('รับทราบ (Understood)', style: TextStyle(fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      'รับทราบ (Understood)',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ],
               ),
             );
           }
-        
-          
         },
         builder: (context, roomState) {
           // ==========================================
@@ -414,9 +460,19 @@ class _RadarPageState extends State<RadarPage> {
               ),
               title: const Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.red,
+                    size: 28,
+                  ),
                   SizedBox(width: 8),
-                  Text('Emergency SOS', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                  Text(
+                    'Emergency SOS',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ],
               ),
               content: const Text(
@@ -426,31 +482,57 @@ class _RadarPageState extends State<RadarPage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text('Cancel', style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.bold)),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red[600],
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  onPressed: () {
-                    Navigator.pop(context); 
-                    context.read<RoomBloc>().add(SendSOSEvent());
-                    
-                    // 🟢 ตอนนี้ให้เด้งแค่ข้อความหลอกๆ ไปก่อน (เดี๋ยวค่อยมาต่อ BLoC ทีหลัง)
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text('ส่งสัญญาณ SOS ฉุกเฉินเรียบร้อย!', style: TextStyle(fontWeight: FontWeight.bold)),
-                        backgroundColor: Colors.red[600],
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  },
-                  child: const Text('Send SOS'),
                 ),
+                ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red[600],
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context); // ปิด Dialog
+                      
+                      // 🟢 1. ดูดสถานะ GPS ล่าสุดจาก LocationBloc โดยตรง
+                      final locState = context.read<LocationBloc>().state;
+                      double currentLat = 0.0;
+                      double currentLng = 0.0;
+                      
+                      if (locState is LocationTracking) {
+                        currentLat = locState.position.latitude;
+                        currentLng = locState.position.longitude;
+                      }
+
+                      // 🟢 2. ยิง Event SOS พร้อมพิกัดล่าสุด
+                      context.read<RoomBloc>().add(
+                        RoomSendSOSEvent(
+                          latitude: currentLat,
+                          longitude: currentLng,
+                        ),
+                      );
+
+                      // 🟢 แจ้งเตือนว่าส่งสำเร็จ
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text(
+                            'ส่งสัญญาณ SOS ฉุกเฉินเรียบร้อย!',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          backgroundColor: Colors.red[600],
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    child: const Text('Send SOS'),
+                  ),
               ],
             ),
           );
@@ -458,9 +540,15 @@ class _RadarPageState extends State<RadarPage> {
         backgroundColor: Colors.red[600],
         elevation: 8,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16), // ทำให้ปุ่มไม่กลมดิ๊ก ออกแนวสี่เหลี่ยมมนๆ ดู Tactical
+          borderRadius: BorderRadius.circular(
+            16,
+          ), // ทำให้ปุ่มไม่กลมดิ๊ก ออกแนวสี่เหลี่ยมมนๆ ดู Tactical
         ),
-        child: const Icon(Icons.sos_rounded, color: Colors.white, size: 32),
+        child: const Icon(
+          Icons.sos_rounded,
+          color: Colors.white,
+          size: 32,
+        ),
       ),
 
       // 📍 1. BlocBuilder ดึงพิกัด GPS (Lat, Lng) ที่อัปเดตช้ากว่า
@@ -474,8 +562,8 @@ class _RadarPageState extends State<RadarPage> {
             myLng = locationState.position.longitude;
           }
           if (myLat != null && myLng != null && tripMembers.isNotEmpty) {
-                _checkMemberDistances(tripMembers, myLat, myLng);
-              }
+            _checkMemberDistances(tripMembers, myLat, myLng);
+          }
 
           // 🧭 2. StreamBuilder ดึงทิศทางเข็มทิศ (Heading) ที่อัปเดตแบบ Real-time
           return StreamBuilder<CompassEvent>(
@@ -486,7 +574,6 @@ class _RadarPageState extends State<RadarPage> {
 
               return Column(
                 children: [
-                  
                   Expanded(
                     flex: 3,
                     child: Center(
@@ -835,7 +922,8 @@ class _RadarPageState extends State<RadarPage> {
         if (isTooClose) {
           distanceText = 'Near you'; // 🟢 อยู่ใกล้เกินไป ไม่ต้องโชว์ตัวเลข
         } else if (distanceInMeters >= 1000) {
-          distanceText = '${(distanceInMeters / 1000).toStringAsFixed(1)} km away';
+          distanceText =
+              '${(distanceInMeters / 1000).toStringAsFixed(1)} km away';
         } else {
           distanceText = '${distanceInMeters.toStringAsFixed(0)} m away';
         }
@@ -848,7 +936,7 @@ class _RadarPageState extends State<RadarPage> {
         member.latitude!,
         member.longitude!,
       );
-      
+
       // เอาทิศทางเป้าหมาย มาลบกับทิศที่เรากำลังหันหน้าอยู่ (myHeading)
       final relativeBearing = bearingInDegrees - myHeading;
 
@@ -883,7 +971,9 @@ class _RadarPageState extends State<RadarPage> {
                       // 🟢 เปลี่ยนสีตัวอักษรเป็นเทาถ้าออฟไลน์
                       color: !member.isActive
                           ? Colors.grey[600]
-                          : (member.isHost ? Colors.green[700] : Colors.blue[700]),
+                          : (member.isHost
+                                ? Colors.green[700]
+                                : Colors.blue[700]),
                       fontWeight: FontWeight.bold,
                     ),
                   )
@@ -903,7 +993,9 @@ class _RadarPageState extends State<RadarPage> {
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                         // 🟢 ดรอปสีชื่อเพื่อนถ้าออฟไลน์
-                        color: !member.isActive ? Colors.grey[500] : Colors.black87,
+                        color: !member.isActive
+                            ? Colors.grey[500]
+                            : Colors.black87,
                       ),
                     ),
                     if (member.isHost) ...[
@@ -911,7 +1003,9 @@ class _RadarPageState extends State<RadarPage> {
                       Icon(
                         Icons.star_rounded,
                         size: 16,
-                        color: !member.isActive ? Colors.grey[400] : Colors.amber[600],
+                        color: !member.isActive
+                            ? Colors.grey[400]
+                            : Colors.amber[600],
                       ),
                     ],
                   ],
@@ -921,9 +1015,12 @@ class _RadarPageState extends State<RadarPage> {
                 Row(
                   children: [
                     Icon(
-                      !member.isActive 
-                          ? Icons.wifi_off_rounded // ไอคอนเน็ตตัดถ้าออฟไลน์
-                          : (canCalculate ? Icons.social_distance_rounded : Icons.location_off_rounded),
+                      !member.isActive
+                          ? Icons
+                                .wifi_off_rounded // ไอคอนเน็ตตัดถ้าออฟไลน์
+                          : (canCalculate
+                                ? Icons.social_distance_rounded
+                                : Icons.location_off_rounded),
                       size: 14,
                       color: (!member.isActive || !canCalculate)
                           ? Colors.grey[500]
@@ -957,25 +1054,25 @@ class _RadarPageState extends State<RadarPage> {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               // 🟢 ปรับสีพื้นหลังไอคอน
-              color: (!member.isActive || !canCalculate) 
-                  ? Colors.grey[200] 
+              color: (!member.isActive || !canCalculate)
+                  ? Colors.grey[200]
                   : Colors.green[50],
               shape: BoxShape.circle,
             ),
             child: Transform.rotate(
               // 🟢 ถ้าอยู่ใกล้เกินไป (isTooClose) หรือออฟไลน์ ให้ล็อกเป็น 0 องศาไปเลย
-              angle: (canCalculate && !isTooClose && member.isActive) 
-                  ? bearingAngle 
+              angle: (canCalculate && !isTooClose && member.isActive)
+                  ? bearingAngle
                   : 0.0,
               child: Icon(
                 // 🟢 ถ้าใกล้เกิน 10 เมตร เปลี่ยนเป็นรูปเป้าหมายวงกลม
                 isTooClose && member.isActive
-                    ? Icons.adjust_rounded 
-                    : (canCalculate && member.isActive 
-                        ? Icons.navigation_rounded 
-                        : Icons.location_off_rounded),
-                color: (!member.isActive || !canCalculate) 
-                    ? Colors.grey[400] 
+                    ? Icons.adjust_rounded
+                    : (canCalculate && member.isActive
+                          ? Icons.navigation_rounded
+                          : Icons.location_off_rounded),
+                color: (!member.isActive || !canCalculate)
+                    ? Colors.grey[400]
                     : Colors.green[600],
                 size: 20,
               ),

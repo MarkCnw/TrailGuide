@@ -43,6 +43,13 @@ enum RoomMessageType {
   pong,
 }
 
+enum MessageType {
+  locationUpdate,
+  startTracking,
+  sos, // 🟢 1. เพิ่มประเภท SOS
+  cancelSos // 🟢 2. เพิ่มประเภทยกเลิก SOS
+}
+
 /// สถานะการตอบกลับ Join Request
 enum JoinResponseStatus {
   /// ยอมรับ - เข้าห้องได้
