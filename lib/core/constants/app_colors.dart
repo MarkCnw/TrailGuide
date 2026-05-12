@@ -1,26 +1,26 @@
-// import 'dart:ui';
+import 'package:flutter/material.dart';
 
-// class AppColors {
-//   AppColors._();
-//   // ===== PRIMARY (เขียวธรรมชาติ) =====
-//   static const Color primaryGreen = Color(0xFF2E7D32);
-//   static const Color primaryGreenLight = Color(0xFF66BB6A);
-//   // ===== BACKGROUND =====
-//   static const Color background = Color(0xFFF5F5F5);
-//   // ===== SURFACE / CARD =====
-//   static const Color card = Color(0xFFFFFFFF);
-//   // ===== NAVIGATION =====
-//   static const Color navBackground = Color(0xFFFFFFFF);
-//   static const Color navActive = Color(0xFF2E7D32);
-//   static const Color navInactive = Color(0xFF757575);
-//   // ===== TEXT =====
-//   static const Color textPrimary = Color(0xFF212121);
-//   static const Color textSecondary = Color(0xFF757575);
-//   // ===== STATUS =====
-//   static const Color success = Color(0xFF4CAF50);
-//   static const Color error = Color(0xFFE53935);
-//   static const Color warning = Color(0xFFFFB300);
-//   // ===== ACCENT =====
-//   static const Color orange = Color(0xFFFF6F00);
-//   static const Color blue = Color(0xFF1976D2);
-// }
+class AppColors {
+  AppColors._(); // ป้องกันการสร้าง Instance (ไม่ให้เรียก new AppColors())
+
+  // 🌲 Brand / Primary (เขียวป่าลึก - ดูพรีเมียมและน่าเชื่อถือ)
+  static const Color primary = Color(0xFF235347);
+  static const Color primaryLight = Color(0xFF3A7D6D);
+  static const Color primaryDark = Color(0xFF16362E);
+
+  // 🍃 Surface & Background (สีพื้นผิว)
+  static const Color background = Color(0xFFF8FAFC); // Slate 50 (เทาอ่อนสุดๆ สบายตา)
+  static const Color surface = Colors.white; // ขาวสะอาด สำหรับการ์ด
+  static const Color border = Color(0xFFE2E8F0); // Slate 200 (ขอบจางๆ)
+
+  // 🖋️ Text & Typography (สีตัวอักษร)
+  static const Color textHigh = Color(0xFF0F172A); // Slate 900 (หัวข้อเด่นๆ)
+  static const Color textMedium = Color(0xFF475569); // Slate 600 (ข้อความทั่วไป)
+  static const Color textLow = Color(0xFF94A3B8); // Slate 400 (คำอธิบายรอง/Hint)
+
+  // 🚨 Status & Alerts (สีสถานะ)
+  static const Color danger = Color(0xFFEF4444); // Red 500 (ปุ่ม SOS / แจ้งเตือนอันตราย)
+  static const Color warning = Color(0xFFF59E0B); // Amber 500 (สถานะ Host / ระยะห่าง)
+  static const Color success = Color(0xFF10B981); // Emerald 500 (เชื่อมต่อสำเร็จ)
+  static const Color info = Color(0xFF3B82F6); // Blue 500 (พิกัด GPS / เข็มทิศ)
+}

@@ -40,12 +40,7 @@ class RoomCreated extends RoomState {
   final String hostName;
   final String? hostImageBase64;
 
-  const RoomCreated({
-    required this.room,
-    this.connectedMembers = const [],
-    required this.hostName,
-    this.hostImageBase64,
-  });
+  const RoomCreated({required this.room, this.connectedMembers = const [], required this.hostName, this.hostImageBase64});
 
   /// จำนวนคนทั้งหมด (รวม Host)
   int get totalCount => connectedMembers.length + 1;
@@ -60,24 +55,14 @@ class RoomCreated extends RoomState {
   List<PeerEntity> get allParticipants {
     final list = <PeerEntity>[
       // Host อยู่บนสุด
-      PeerEntity(
-        id: room.hostId,
-        name: hostName,
-        imageBase64: hostImageBase64,
-        isHost: true,
-      ),
+      PeerEntity(id: room.hostId, name: hostName, imageBase64: hostImageBase64, isHost: true),
       // Members ตามมา
       ...connectedMembers,
     ];
     return list;
   }
 
-  RoomCreated copyWith({
-    RoomEntity? room,
-    List<PeerEntity>? connectedMembers,
-    String? hostName,
-    String? hostImageBase64,
-  }) {
+  RoomCreated copyWith({RoomEntity? room, List<PeerEntity>? connectedMembers, String? hostName, String? hostImageBase64}) {
     return RoomCreated(
       room: room ?? this.room,
       connectedMembers: connectedMembers ?? this.connectedMembers,
@@ -87,12 +72,7 @@ class RoomCreated extends RoomState {
   }
 
   @override
-  List<Object?> get props => [
-    room,
-    connectedMembers,
-    hostName,
-    hostImageBase64,
-  ];
+  List<Object?> get props => [room, connectedMembers, hostName, hostImageBase64];
 }
 
 // ============================================================
@@ -159,16 +139,7 @@ class RoomJoined extends RoomState {
   }
 
   @override
-  List<Object?> get props => [
-    roomId,
-    roomPin,
-    roomPassword,
-    hostPeerId,
-    hostName,
-    hostImageBase64,
-    maxMembers,
-    allMembers,
-  ];
+  List<Object?> get props => [roomId, roomPin, roomPassword, hostPeerId, hostName, hostImageBase64, maxMembers, allMembers];
 }
 
 // ============================================================
@@ -205,10 +176,7 @@ class RoomPasswordError extends RoomState {
   final String message;
   final int? remainingAttempts;
 
-  const RoomPasswordError({
-    this.message = 'Wrong password.  Please try again.',
-    this.remainingAttempts,
-  });
+  const RoomPasswordError({this.message = 'Wrong password.  Please try again.', this.remainingAttempts});
 
   @override
   List<Object?> get props => [message, remainingAttempts];
@@ -225,8 +193,6 @@ class RoomFullError extends RoomState {
   List<Object?> get props => [hostName];
 }
 
-
-
 // เอาไปวางไว้ล่างสุดของไฟล์ room_state.dart
 // 🆕 State สำหรับการอัปเดตพิกัดเรียลไทม์ในหน้า Tracking
 class RoomTrackingUpdated extends RoomState {
@@ -239,4 +205,31 @@ class RoomTrackingUpdated extends RoomState {
 // 🆕 State ตอนเริ่มทริป (ให้ดึงคุณสมบัติมาจาก RoomTrackingUpdated เลย)
 class RoomTripStarted extends RoomTrackingUpdated {
   const RoomTripStarted({required super.members});
+}
+
+class RoomMemberLeft extends RoomState {
+  final String memberName;
+  final DateTime timestamp;
+
+  RoomMemberLeft({required this.memberName}) : timestamp = DateTime.now();
+
+  @override
+  List<Object?> get props => [memberName, timestamp];
+}
+
+// 🟢 เพิ่ม State เพื่อบอก UI ว่าตอนนี้ "หน้าจอต้องแดงแล้วนะ!"
+class RoomEmergencyState extends RoomState {
+  final String senderId; // ใครเป็นคนกด SOS
+  final double latitude;
+  final double longitude;
+
+  const RoomEmergencyState({
+    required this.senderId,
+    required this.latitude,
+    required this.longitude,
+  });
+
+  // 🔧 Bug #2 Fix: เพิ่ม props เพื่อให้ Equatable เปรียบเทียบได้ถูกต้อง
+  @override
+  List<Object?> get props => [senderId, latitude, longitude];
 }

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+
 import 'package:trail_guide/core/config/routes/app_router.dart';
+import 'package:trail_guide/core/theme/app_theme.dart';
 import 'package:trail_guide/features/p2p/presentation/bloc/p2p/p2p_bloc.dart';
 import 'package:trail_guide/features/p2p/presentation/bloc/room/room_bloc.dart';
 import 'package:trail_guide/features/tracking/presentation/bloc/location/location_bloc.dart';
 import 'features/onboarding/presentation/cubit/onboarding_cubit.dart';
+import 'features/history/presentation/cubit/history_cubit.dart';
 
 import 'injection_container.dart' as di;
 
@@ -36,16 +39,21 @@ class MyApp extends StatelessWidget {
           create: (_) => di.sl<RoomBloc>(),
         ),
 
-        BlocProvider(create: (_) => di.sl<LocationBloc>()), // 🆕 เพิ่มบรรทัดนี้
+        BlocProvider(create: (_) => di.sl<LocationBloc>()),
+
+        // 🆕 5. HistoryCubit (ประวัติทริป)
+        BlocProvider<HistoryCubit>(
+          create: (_) => di.sl<HistoryCubit>(),
+        ),
       ],
       child:  MaterialApp.router(
         debugShowCheckedModeBanner: false,
         title: 'TrailGuide',
-        theme:  ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E7D32)),
-          useMaterial3: true,
-        ),
         routerConfig: AppRouter.router,
+        
+        // 🟢 2. เพิ่ม Theme ตรงนี้เพื่อบังคับใช้ฟอนต์ Prompt ทั้งแอป!
+        // 🟢 เรียกใช้ AppTheme ที่เราสร้างไว้ได้เลย
+        theme: AppTheme.lightTheme,
       ),
     );
   }

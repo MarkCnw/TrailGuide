@@ -11,7 +11,9 @@ import 'package:trail_guide/features/p2p/presentation/bloc/room/room_state.dart'
 
 /// BLoC สำหรับจัดการ Room State
 class RoomBloc extends Bloc<RoomEvent, RoomState> {
+  Timer? _heartbeatTimer;
   final P2PRepository _repository;
+  final int timeoutSeconds = 10;
 
   /// ข้อมูลห้องปัจจุบัน (สำหรับ Host)
   RoomEntity? _currentRoom;
@@ -36,6 +38,7 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
 
   /// 🆕 Host Name (เก็บไว้ใช้)
   String _hostName = '';
+  String get hostName => _hostName;
 
   /// 🆕 Host Image Base64
   String? _hostImageBase64;
@@ -67,13 +70,37 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     on<ResetRoomEvent>(_onReset);
     on<SendMyLocationEvent>(_onSendMyLocation);
     on<UpdatePeerLocationEvent>(_onUpdatePeerLocation);
+    on<RoomSendSOSEvent>(_onSendSOS);
+    on<RoomCancelSOSEvent>(_onCancelSOS);
+    
 
     // 🆕 Event สำหรับเริ่มทริป
     on<StartTripEvent>(_onStartTrip);
     on<OnTripStartedByHostEvent>(_onTripStartedByHost);
+    on<CheckMemberTimeoutEvent>(_onCheckMemberTimeout);
 
     // Generate Device ID
     _deviceId = 'device_${DateTime.now().millisecondsSinceEpoch}';
+
+    // ใส่ไว้ใน constructor ของ RoomBloc
+    on<OnSOSReceivedEvent>((event, emit) async {
+      // เมื่อรับคลื่น SOS มา ให้เปลี่ยน State ทันที!
+      emit(RoomEmergencyState(
+        senderId: event.senderName, 
+        latitude: 0, 
+        longitude: 0,
+      ));
+
+      // 🔧 Bug #2 Fix: กลับ State เป็น Tracking เพื่อให้เรดาร์ทำงานต่อได้
+      await Future.delayed(const Duration(seconds: 1));
+      emit(
+        RoomTrackingUpdated(
+          members: isHost
+              ? List.from(_connectedMembers)
+              : List.from(_allMembersForMember),
+        ),
+      );
+    });
   }
 
   /// Getters
@@ -87,6 +114,76 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
   // ============================================================
   // Keep-Alive System
   // ============================================================
+  void _onCheckMemberTimeout(
+    CheckMemberTimeoutEvent event,
+    Emitter<RoomState> emit,
+  ) {
+    if (state is RoomTripStarted || state is RoomTrackingUpdated) {
+      // ดึงรายชื่อเพื่อนปัจจุบันออกมา
+      final currentMembers = _getCurrentMembersFromState(state);
+      final now = DateTime.now();
+      bool hasChanges = false;
+
+      final updatedMembers = currentMembers.map((member) {
+        // ข้ามตัวเราเองไป (ตรวจสอบจาก ID)
+        if (member.id == deviceId) return member;
+
+        // ถ้ามีเวลาอัปเดตล่าสุด ให้คำนวณระยะห่าง
+        if (member.lastUpdatedAt != null) {
+          final difference = now
+              .difference(member.lastUpdatedAt!)
+              .inSeconds;
+
+          // ถ้าเวลาผ่านไปเกิน timeout และสถานะยัง Active อยู่ -> จับเปลี่ยนเป็น Inactive
+          if (difference > timeoutSeconds && member.isActive) {
+            hasChanges = true;
+            return member.copyWith(isActive: false);
+          }
+        }
+        return member;
+      }).toList();
+
+      // 🟢 อัปเดต State ใหม่เฉพาะตอนที่มีคนสถานะเปลี่ยน (จากเขียวเป็นเทา)
+      if (hasChanges) {
+        emit(RoomTrackingUpdated(members: updatedMembers));
+      }
+    }
+  }
+
+  // ============================================================
+  // 🚨 ฟังก์ชันจัดการ SOS 🚨
+  // ============================================================
+  Future<void> _onSendSOS(
+    RoomSendSOSEvent event,
+    Emitter<RoomState> emit,
+  ) async {
+    try {
+      // 🔧 Fix: ใช้ '|' เป็น separator แทน ',' เพื่อป้องกันชื่อที่มี comma
+      final sosString =
+          "SOS:$_memberName|${event.latitude}|${event.longitude}";
+
+      if (isHost) {
+        // Host: ส่งตรงถึง Member ทุกคนได้เลย
+        await _broadcastToAllMembersRaw(sosString);
+      } else if (isMember && _hostPeerId != null) {
+        // 🔧 Member Fix: ส่งไปที่ Host ก่อน แล้ว Host จะกระจายต่อให้
+        // (เหมือน LOC: ที่ Member ส่งผ่าน Host เสมอ)
+        await _repository.sendPayload(_hostPeerId!, sosString);
+      }
+
+      // ✅ ตัวเองไม่ต้องขึ้นหน้าจอแดง (คนกดรู้อยู่แล้วว่ากด SOS)
+      // UI จะแสดง SnackBar ยืนยันจาก radar_page.dart แทน
+    } catch (e) {
+      print("SOS ส่งไม่สำเร็จ: $e");
+    }
+  }
+
+  Future<void> _onCancelSOS(
+    RoomCancelSOSEvent event,
+    Emitter<RoomState> emit,
+  ) async {
+    // TODO: ใส่โค้ดยกเลิกภายหลัง ตอนนี้ใส่โครงว่างๆ ไว้ก่อนไม่ให้ Error
+  }
 
   void _startKeepAlive() {
     _stopKeepAlive();
@@ -127,10 +224,11 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
       await _repository.sendPayload(_hostPeerId!, pingMessage.toJson());
     }
   }
+  
 
   void _checkConnections() {
     final now = DateTime.now();
-    final timeout = const Duration(seconds: 30);
+    final timeout = const Duration(seconds: 30); // 🔧 เพิ่มจาก 5s เป็น 30s (ping ส่งทุก 10s รอให้พลาด 3 รอบก่อนตัดสิน)
 
     if (isHost) {
       final disconnectedMembers = <String>[];
@@ -245,7 +343,7 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
       _hostName = '';
       _hostImageBase64 = null;
 
-      emit(const RoomLeft());
+      emit(RoomClosedByHost(reason: event.reason!));
     } catch (e) {
       emit(RoomError('Failed to close room: $e'));
     }
@@ -366,7 +464,11 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     for (final member in _connectedMembers) {
       await _repository.sendPayload(member.id, "CMD:START_TRIP");
     }
-    // 🔥 แก้บรรทัดนี้: ส่งข้อมูลเพื่อนไปด้วย
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      add(const CheckMemberTimeoutEvent());
+    });
+
     emit(RoomTripStarted(members: List.from(_connectedMembers)));
   }
 
@@ -375,7 +477,10 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     OnTripStartedByHostEvent event,
     Emitter<RoomState> emit,
   ) {
-    // 🔥 แก้บรรทัดนี้: ส่งข้อมูลเพื่อนไปด้วย
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      add(const CheckMemberTimeoutEvent());
+    });
     emit(RoomTripStarted(members: List.from(_allMembersForMember)));
   }
 
@@ -566,10 +671,16 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
 
     final memberName = message.senderName;
     final memberId = message.senderId;
+    final currentState = state;
 
+    // ลบเพื่อนออกจากลิสต์
     _connectedMembers.removeWhere((m) => m.id == fromPeerId);
     _lastPingTime.remove(fromPeerId);
 
+    emit(RoomMemberLeft(memberName: memberName));
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    // ส่งข้อความไปบอกคนอื่นๆ ที่เหลือว่ามีคนออก
     final leftNotification = RoomMessage.memberLeft(
       hostId: _deviceId,
       hostName: _currentRoom!.hostName,
@@ -580,16 +691,21 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     );
     await _broadcastToAllMembers(leftNotification);
 
-    emit(
-      RoomCreated(
-        room: _currentRoom!,
-        connectedMembers: List.from(_connectedMembers),
-        hostName: _hostName,
-        hostImageBase64: _hostImageBase64,
-      ),
-    );
+    // 🔥 ไฮไลท์การแก้บัค: เช็คก่อนว่าตอนนี้กำลังเดินป่า (หน้าเรดาร์) อยู่หรือเปล่า?
+    if (currentState is RoomTripStarted ||
+        currentState is RoomTrackingUpdated) {
+      emit(RoomTrackingUpdated(members: List.from(_connectedMembers)));
+    } else {
+      emit(
+        RoomCreated(
+          room: _currentRoom!,
+          connectedMembers: List.from(_connectedMembers),
+          hostName: _hostName,
+          hostImageBase64: _hostImageBase64,
+        ),
+      );
+    }
   }
-
   // ============================================================
   // MEMBER: Handle Join Response
   // ============================================================
@@ -622,7 +738,8 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
           final memberId = m['id'] as String? ?? '';
           // เช็คว่าไม่ใช่ตัวเราเอง ถึงจะแอดเข้าลิสต์
           if (memberId != _deviceId && memberId.isNotEmpty) {
-            _allMembersForMember.add( // 🔥 คุณเผลอลบบรรทัดนี้ไปในรอบก่อนครับ
+            _allMembersForMember.add(
+              // 🔥 คุณเผลอลบบรรทัดนี้ไปในรอบก่อนครับ
               PeerEntity(
                 id: memberId,
                 name: m['name'] as String? ?? '',
@@ -645,6 +762,9 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
         ),
       );
 
+      // 📝 เก็บชื่อ Host ไว้ใช้บันทึกประวัติทริป (ฝั่ง Member)
+      _hostName = message.senderName;
+
       emit(
         RoomJoined(
           roomId: message.roomId ?? '',
@@ -663,7 +783,11 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
       final status = message.joinResponseStatus;
       switch (status) {
         case JoinResponseStatus.rejectedWrongPassword:
-          emit(RoomPasswordError(message: message.message ?? 'Wrong password. '));
+          emit(
+            RoomPasswordError(
+              message: message.message ?? 'Wrong password. ',
+            ),
+          );
           break;
         case JoinResponseStatus.rejectedRoomFull:
           emit(RoomFullError(hostName: message.senderName));
@@ -710,17 +834,35 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
   // MEMBER: Handle Member Left Notification
   // ============================================================
 
-  void _handleMemberLeftNotification(
+  // 🔧 Bug #8 Fix: เปลี่ยนจาก void เป็น Future<void> เพื่อรองรับ async/await อย่างถูกต้อง
+  Future<void> _handleMemberLeftNotification(
     RoomMessage message,
     Emitter<RoomState> emit,
-  ) {
+  ) async {
     final currentState = state;
-    if (currentState is RoomJoined) {
-      _allMembersForMember.removeWhere((m) => m.id == message.memberId);
-
-      emit(
-        currentState.copyWith(allMembers: List.from(_allMembersForMember)),
+    final index = _allMembersForMember.indexWhere(
+      (m) => m.id == message.memberId,
+    );
+    if (index != -1) {
+      final disconnectedName = _allMembersForMember[index].name;
+      _allMembersForMember[index] = _allMembersForMember[index].copyWith(
+        isActive: false,
       );
+
+      emit(RoomMemberLeft(memberName: disconnectedName));
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (currentState is RoomTripStarted ||
+          currentState is RoomTrackingUpdated) {
+        emit(
+          RoomTrackingUpdated(members: List.from(_allMembersForMember)),
+        );
+      } else if (currentState is RoomJoined) {
+        emit(
+          currentState.copyWith(
+            allMembers: List.from(_allMembersForMember),
+          ),
+        );
+      }
     }
   }
 
@@ -760,55 +902,79 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
 
   void _onMemberLeft(MemberLeftEvent event, Emitter<RoomState> emit) {}
 
+  // ============================================================
+  // Internal Events (จัดการเมื่อสัญญาณหลุด)
+  // ============================================================
+  // 🔧 Bug #1 Fix: แยก else if (isMember) ออกจาก if (isHost) เพื่อให้ Member ตรวจจับ Host หลุดได้
   Future<void> _onPeerDisconnected(
     PeerDisconnectedEvent event,
     Emitter<RoomState> emit,
   ) async {
     _lastPingTime.remove(event.peerId);
+    bool isTracking = _heartbeatTimer != null && _heartbeatTimer!.isActive;
 
     if (isHost) {
-      final disconnectedMember = _connectedMembers
-          .where((m) => m.id == event.peerId)
-          .firstOrNull;
+      final index = _connectedMembers.indexWhere(
+        (m) => m.id == event.peerId,
+      );
 
-      if (disconnectedMember != null) {
-        _connectedMembers.removeWhere((m) => m.id == event.peerId);
-
-        if (_currentRoom != null) {
-          final leftNotification = RoomMessage.memberLeft(
-            hostId: _deviceId,
-            hostName: _currentRoom!.hostName,
-            leftMemberId: disconnectedMember.id,
-            leftMemberName: disconnectedMember.name,
-            currentMemberCount: _connectedMembers.length + 1,
-            maxMembers: _currentRoom!.maxMembers,
+      if (index != -1) {
+        final disconnectedMember = _connectedMembers[index];
+        final disconnectedName = _connectedMembers[index].name;
+        _connectedMembers[index] = disconnectedMember.copyWith(
+          isActive: false,
+        );
+        if (isTracking) {
+          emit(RoomTrackingUpdated(members: List.from(_connectedMembers)));
+        } else if (_currentRoom != null) {
+          emit(
+            RoomCreated(
+              room: _currentRoom!,
+              connectedMembers: List.from(_connectedMembers),
+              hostName: _hostName,
+              hostImageBase64: _hostImageBase64,
+            ),
           );
-          await _broadcastToAllMembers(leftNotification);
         }
 
-        emit(
-          RoomCreated(
-            room: _currentRoom!,
-            connectedMembers: List.from(_connectedMembers),
-            hostName: _hostName,
-            hostImageBase64: _hostImageBase64,
-          ),
-        );
+        emit(RoomMemberLeft(memberName: disconnectedName));
+        await Future.delayed(const Duration(milliseconds: 100));
+        try {
+          if (_currentRoom != null) {
+            final leftNotification = RoomMessage.memberLeft(
+              hostId: _deviceId,
+              hostName: _currentRoom!.hostName,
+              leftMemberId: disconnectedMember.id,
+              leftMemberName: disconnectedName,
+              currentMemberCount: _connectedMembers.length,
+              maxMembers: _currentRoom!.maxMembers,
+            );
+            await _broadcastToAllMembers(leftNotification);
+          }
+        } catch (_) {}
       }
     } else if (isMember) {
+      // สำหรับ Member ถ้า Host หลุด -> วงแตก
       if (event.peerId == _hostPeerId) {
         _stopKeepAlive();
+        _heartbeatTimer?.cancel();
+        try {
+          if (_hostPeerId != null) {
+            await _repository.disconnectFromPeer(_hostPeerId!);
+          }
+          await _repository.stopAll();
+        } catch (_) {}
+
         _hostPeerId = null;
         _currentRole = RoomRole.none;
         _allMembersForMember.clear();
         emit(const RoomClosedByHost(reason: 'Lost connection to host.'));
       }
     }
+    // ============================================================
+    // Reset
+    // ============================================================
   }
-
-  // ============================================================
-  // Reset
-  // ============================================================
 
   Future<void> _onReset(
     ResetRoomEvent event,
@@ -855,26 +1021,54 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
         return;
       }
 
+      // 🚨 🆕 ดักจับสัญญาณฉุกเฉิน (SOS) ที่เพื่อนส่งมา! 🚨
+      // 🔧 Bug #3 Fix: ใช้ '|' เป็น separator แทน ',' เพื่อรองรับชื่อที่มี comma
+      if (rawString.startsWith("SOS:")) {
+        final content = rawString.substring(4); // ตัดคำว่า "SOS:" ออก
+        final parts = content.split('|');
+        if (parts.length == 3) {
+          final senderName = parts[0];
+
+          // 🔧 SOS Relay Fix: ถ้าเราเป็น Host ที่ได้รับ SOS จาก Member
+          // ต้องกระจายต่อให้ Member คนอื่นๆ ด้วย (ไม่งั้นเฉพาะ Host ที่เห็น)
+          if (isHost) {
+            _broadcastToAllMembersRaw(rawString, excludePeerId: fromPeerId);
+          }
+
+          // โยนเข้า Event เพื่อให้ BLoC เปลี่ยน State หน้าจอแดงทันที
+          add(OnSOSReceivedEvent(senderName: senderName));
+        }
+        return;
+      }
+
       // 🆕 ดักจับพิกัด GPS ที่ลอยมาตามอากาศ!
       if (rawString.startsWith("LOC:")) {
-        final parts = rawString.split(','); // แบ่งเป็น ['LOC:ID', 'Lat', 'Lng']
+        final parts = rawString.split(
+          ',',
+        ); // แบ่งเป็น ['LOC:ID', 'Lat', 'Lng']
         if (parts.length == 3) {
           final senderIdStr = parts[0].substring(4); // ตัดคำว่า "LOC:" ออก
           final lat = double.tryParse(parts[1]);
           final lng = double.tryParse(parts[2]);
-          
+
           if (lat != null && lng != null) {
             String realPeerId;
             if (senderIdStr == "MEMBER") {
               // ถ้ามาจาก Member ให้ใช้รหัสท่อ P2P ของคนที่ส่งมา
-              realPeerId = fromPeerId; 
+              realPeerId = fromPeerId;
             } else {
               // ถ้ามาจาก HOST หรือเป็นการกระจายต่อพิกัด ให้ใช้ ID ตามที่ส่งมาเลย
-              realPeerId = senderIdStr; 
+              realPeerId = senderIdStr;
             }
 
             // โยนเข้า BLoC ให้อัปเดต UI
-            add(UpdatePeerLocationEvent(peerId: realPeerId, latitude: lat, longitude: lng));
+            add(
+              UpdatePeerLocationEvent(
+                peerId: realPeerId,
+                latitude: lat,
+                longitude: lng,
+              ),
+            );
           }
         }
         return; // ทำเสร็จก็จบเลย ไม่ต้องไปแปลง JSON
@@ -882,7 +1076,9 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
 
       // ถ้าไม่ใช่คำสั่งพิเศษ แสดงว่าเป็น JSON ของ RoomMessage
       final message = RoomMessage.fromBytes(bytes.toList());
-      add(RoomMessageReceivedEvent(fromPeerId: fromPeerId, message: message));
+      add(
+        RoomMessageReceivedEvent(fromPeerId: fromPeerId, message: message),
+      );
     } catch (e) {
       print('RoomBloc: Failed to parse message: $e');
     }
@@ -939,8 +1135,13 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
       // Host หารายชื่อ Member คนที่ส่งมา
       final index = _connectedMembers.indexWhere((m) => m.id == pId);
       if (index != -1) {
-        _connectedMembers[index] = _connectedMembers[index].copyWith(latitude: lat, longitude: lng);
-        
+        _connectedMembers[index] = _connectedMembers[index].copyWith(
+          latitude: lat,
+          longitude: lng,
+          lastUpdatedAt: DateTime.now(), // 🟢 เติมแสตมป์เวลา
+          isActive: true,
+        );
+
         // 🔄 ส่งพิกัดของ Member คนนี้ ไปบอก Member คนอื่นๆ ในกลุ่มด้วย
         final locString = "LOC:$pId,$lat,$lng";
         await _broadcastToAllMembersRaw(locString, excludePeerId: pId);
@@ -948,28 +1149,58 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     } else if (isMember) {
       if (pId == "HOST") {
         // 🚀 ถ้าพิกัดมาจาก Host: ค้นหาจากสถานะ isHost ได้เลย ไม่ต้องสน ID ยาวๆ
-        final index = _allMembersForMember.indexWhere((m) => m.isHost == true);
+        final index = _allMembersForMember.indexWhere(
+          (m) => m.isHost == true,
+        );
         if (index != -1) {
-          _allMembersForMember[index] = _allMembersForMember[index].copyWith(latitude: lat, longitude: lng);
+          _allMembersForMember[index] = _allMembersForMember[index]
+              .copyWith(
+                latitude: lat,
+                longitude: lng,
+                lastUpdatedAt: DateTime.now(),
+                isActive: true,
+              );
         }
       } else {
         // อัปเดตพิกัดของ Member คนอื่น (ที่ Host กระจายต่อมาให้)
         final index = _allMembersForMember.indexWhere((m) => m.id == pId);
         if (index != -1) {
-          _allMembersForMember[index] = _allMembersForMember[index].copyWith(latitude: lat, longitude: lng);
+          _allMembersForMember[index] = _allMembersForMember[index]
+              .copyWith(
+                latitude: lat,
+                longitude: lng,
+                lastUpdatedAt: DateTime.now(),
+                isActive: true,
+              );
         }
       }
     }
 
     // 🔥 สั่ง BLoC อัปเดตพิกัดออกไปที่หน้าเรดาร์
-    emit(RoomTrackingUpdated(
-      members: isHost ? List.from(_connectedMembers) : List.from(_allMembersForMember),
-    ));
+    emit(
+      RoomTrackingUpdated(
+        members: isHost
+            ? List.from(_connectedMembers)
+            : List.from(_allMembersForMember),
+      ),
+    );
   }
 
   @override
   Future<void> close() {
     _stopKeepAlive();
+    _heartbeatTimer?.cancel();
     return super.close();
   }
+
+  List<PeerEntity> _getCurrentMembersFromState(RoomState state) {
+    if (state is RoomTripStarted) {
+      return state.members;
+    } else if (state is RoomTrackingUpdated) {
+      return state.members;
+    }
+    return []; // ถ้าเป็น State อื่นๆ (เช่น Initial, Closed) ให้คืนค่าเป็น List ว่าง
+  }
+
+  
 }

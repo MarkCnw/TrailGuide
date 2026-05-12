@@ -1,8 +1,12 @@
 import 'dart:math' as math;
+import 'dart:typed_data'; // 🟢 เพิ่มสำหรับการทำ cache รูปภาพ
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:go_router/go_router.dart';
-import 'package:trail_guide/features/p2p/presentation/bloc/p2p/p2p_bloc.dart';
+import 'package:svg_flutter/svg.dart';
+import 'package:trail_guide/core/constants/app_colors.dart';
+import 'package:trail_guide/core/utils/location_calculator.dart';
 
 // P2P & Room
 import '../../domain/entities/peer_entity.dart';
@@ -16,6 +20,10 @@ import '../../../tracking/presentation/bloc/location/location_bloc.dart';
 import '../../../tracking/presentation/bloc/location/location_event.dart';
 import '../../../tracking/presentation/bloc/location/location_state.dart';
 
+// History
+import '../../../history/presentation/cubit/history_cubit.dart';
+import '../../../history/domain/entities/trip_history_entity.dart';
+
 class RadarPage extends StatefulWidget {
   const RadarPage({super.key});
 
@@ -23,69 +31,216 @@ class RadarPage extends StatefulWidget {
   State<RadarPage> createState() => _RadarPageState();
 }
 
-class _RadarPageState extends State<RadarPage> with SingleTickerProviderStateMixin {
-  late AnimationController _radarController;
+class _RadarPageState extends State<RadarPage> {
+  // 🌟 ประกาศตัวแปรเก็บ LocationBloc เพื่อป้องกันบัค context พังตอนสลับหน้า
+  late final LocationBloc _locationBloc;
 
+  // 🟢 1. เพิ่มตัวแปรนี้: เอาไว้จำว่าใครโดนเตือนระยะ 80m ไปแล้วบ้าง
+  final Set<String> _warnedMembers = {};
+
+  // 🧭 Compass Smoothing: ใช้ low-pass filter เพื่อลดการกระตุกของเข็มทิศ
+  double _smoothedHeading = 0.0;
+  static const double _headingSmoothingFactor =
+      0.15; // ค่ายิ่งน้อย = ยิ่ง smooth (แต่ช้า)
+
+  // 🖼️ Image Cache: เก็บรูปที่แปลงแล้วไว้ จะได้ไม่ต้องแปลงใหม่ทุกเฟรม (แก้ปัญหารูปกระพริบเวลาเข็มทิศหมุน)
+  final Map<String, Uint8List?> _imageCache = {};
+
+  // 📝 Trip History: เก็บข้อมูลทริปไว้บันทึกตอนจบ
+  DateTime? _tripStartTime;
+  String _tripHostName = '';
+  List<String> _tripMemberNames = [];
+  // 📝 🟢 ตัวแปรสำหรับเก็บระยะทางและเส้นทาง (แบบ Strava)
+  double _totalDistance = 0.0;
+  final List<double> _routeLatitudes = [];
+  final List<double> _routeLongitudes = [];
+
+  
   @override
   void initState() {
     super.initState();
-    _radarController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    )..repeat();
+
+    // ดึงค่ามาเก็บไว้ในตัวแปรตั้งแต่เริ่มสร้างหน้าจอ
+    _locationBloc = context.read<LocationBloc>();
 
     // 🚀 เริ่มดูด GPS เมื่อเปิดแท็บนี้
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<LocationBloc>().add(StartTrackingEvent());
+      _locationBloc.add(StartTrackingEvent());
     });
+
+    // 🟢 FIX: จับ state เริ่มต้นทันที! (เพราะ BlocConsumer.listener จะไม่ fire สำหรับ state ปัจจุบัน)
+    final currentState = context.read<RoomBloc>().state;
+    if (currentState is RoomTripStarted) {
+      _tripStartTime = DateTime.now();
+      final roomBloc = context.read<RoomBloc>();
+      _tripHostName = roomBloc.hostName;
+      _tripMemberNames = currentState.members.map((m) => m.name).toList();
+      print('📝 [TripHistory] initState จับ state ได้ → Host: $_tripHostName, Members: $_tripMemberNames, StartTime: $_tripStartTime');
+    } else {
+      print('📝 [TripHistory] initState → state ปัจจุบันคือ: ${currentState.runtimeType} (ยังไม่ใช่ RoomTripStarted)');
+    }
   }
 
+  // 🟢 2. ฟังก์ชันเช็กระยะห่างเพื่อน (พร้อมระบบ Cooldown กันแจ้งเตือนสแปม)
+  void _checkMemberDistances(
+    List<PeerEntity> members,
+    double myLat,
+    double myLng,
+  ) {
+    final textTheme = Theme.of(context).textTheme; // 🟢 ดึง Theme สำหรับ SnackBar
+
+    for (var member in members) {
+      if (member.latitude != null &&
+          member.longitude != null &&
+          member.isActive) {
+        double distance = LocationCalculator.calculateDistance(
+          myLat,
+          myLng,
+          member.latitude!,
+          member.longitude!,
+        );
+
+        // ถ้าห่างเกิน 80 เมตร และยังไม่เคยแจ้งเตือน
+        if (distance >= 80.0) {
+          if (!_warnedMembers.contains(member.id)) {
+            _warnedMembers.add(member.id); // จำไว้ว่าเตือนคนนี้ไปแล้ว
+
+            // รอให้หน้าจอวาดเสร็จก่อน แล้วค่อยเด้ง SnackBar
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'ระวัง! ${member.name} อยู่ห่างเกิน 80 เมตร',
+                          style: textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  backgroundColor: Colors.orange[700],
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            });
+          }
+        }
+        // ถ้าระยะกลับมาใกล้กว่า 60 เมตร -> ให้รีเซ็ตค่าเพื่อเปิดโอกาสให้เตือนใหม่ได้ในอนาคต
+        else if (distance < 60.0) {
+          _warnedMembers.remove(member.id);
+        }
+      }
+    }
+  }
+
+  /// 🧭 Low-pass filter สำหรับ smooth ค่าองศา (จัดการ wrap-around 0°/360° ด้วย)
+  double _smoothAngle(double current, double target, double factor) {
+    double delta = target - current;
+    while (delta > 180) delta -= 360;
+    while (delta < -180) delta += 360;
+
+    double result = current + delta * factor;
+    return (result % 360 + 360) % 360;
+  }
+
+  /// 📝 บันทึกประวัติทริปลง Isar เมื่อทริปจบ
+void _saveTripHistory(BuildContext context) {
+    if (_tripStartTime == null) return;
+
+    final trip = TripHistoryEntity(
+      id: 0, 
+      hostName: _tripHostName,
+      memberNames: _tripMemberNames,
+      startedAt: _tripStartTime!,
+      endedAt: DateTime.now(),
+      totalDistance: _totalDistance, // 🟢 ใส่ระยะทางที่คำนวณได้
+      latitudes: _routeLatitudes, // 🟢 ใส่พิกัดเส้นทางทั้งหมด
+      longitudes: _routeLongitudes, // 🟢 ใส่พิกัดเส้นทางทั้งหมด
+    );
+
+    context.read<HistoryCubit>().saveTripRecord(trip);
+    
+    // 🟢 ล้างค่าเส้นทางเก่าทิ้งเผื่อเริ่มทริปใหม่
+    _tripStartTime = null;
+    _totalDistance = 0.0;
+    _routeLatitudes.clear();
+    _routeLongitudes.clear();
+  }
   @override
   void dispose() {
-    _radarController.dispose();
-    Future.microtask(() => context.read<LocationBloc>().add(StopTrackingEvent()));
+    // 🌟 สั่งหยุด GPS ผ่านตัวแปรตรงๆ ไม่มี Future.microtask หรือ context แล้ว
+    _locationBloc.add(StopTrackingEvent());
     super.dispose();
   }
 
+  // 🔧 Bug #6 Fix: ดึง BLoC reference ก่อนเข้า dialog builder เพื่อไม่ใช้ dialog context
   void _showEndTripDialog() {
+    final roomBloc = context.read<RoomBloc>();
+    final textTheme = Theme.of(context).textTheme; // 🟢 ดึง Theme
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('End Adventure?'),
-        content: const Text('Are you sure you want to stop tracking and leave the group?'),
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: Text(
+          'สิ้นสุดการเดินทาง',
+          style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'คุณแน่ใจหรือไม่ว่าต้องการหยุดการติดตามและออกจากกลุ่ม?',
+          style: textTheme.bodyMedium,
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(
+              'ยกเลิก',
+              style: textTheme.labelLarge?.copyWith(color: Colors.grey[600]),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
-              
-              // 🚀 1. เช็คก่อนว่าเราเป็น Host หรือ Member
-              final isHost = context.read<RoomBloc>().isHost;
-              
-              if (isHost) {
-                // ถ้าเป็น Host -> สั่งปิดห้อง (จะทำการหยุดปล่อยคลื่น Advertising ด้วย)
-                context.read<RoomBloc>().add(const CloseRoomEvent(reason: 'Host ended the trip.'));
+              Navigator.pop(dialogContext);
+
+              if (roomBloc.isHost) {
+                roomBloc.add(
+                  const CloseRoomEvent(reason: 'Host ยุติการเดินทางแล้ว.'),
+                );
               } else {
-                // ถ้าเป็น Member -> สั่งแค่ออกจากห้อง
-                context.read<RoomBloc>().add(const LeaveRoomEvent());
+                roomBloc.add(const LeaveRoomEvent());
               }
 
-              // 🛑 2. ปิด GPS 
-              context.read<LocationBloc>().add(StopTrackingEvent());
-              
-              // 3. เด้งกลับไปแท็บ Home
-              context.go('/home'); 
+              _locationBloc.add(StopTrackingEvent());
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red[600],
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
-            child: const Text('End Trip'),
+            child: Text(
+              'จบทริป',
+              style: textTheme.labelLarge?.copyWith(
+                color: Colors.white, 
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -94,6 +249,8 @@ class _RadarPageState extends State<RadarPage> with SingleTickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme; // 🟢 ดึง Theme กลาง
+
     return BlocListener<LocationBloc, LocationState>(
       listener: (context, locationState) {
         if (locationState is LocationTracking) {
@@ -106,101 +263,265 @@ class _RadarPageState extends State<RadarPage> with SingleTickerProviderStateMix
         }
       },
       child: BlocConsumer<RoomBloc, RoomState>(
+        buildWhen: (previous, current) {
+          return current is! RoomMemberLeft &&
+              current is! RoomEmergencyState;
+        },
         listener: (context, roomState) {
-          if (roomState is RoomClosedByHost || roomState is RoomLeft) {
+          if (roomState is RoomClosedByHost) {
+            _saveTripHistory(context);
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Trip ended by host.')),
+              SnackBar(
+                content: Text(roomState.reason),
+                backgroundColor: Colors.red[600],
+              ),
             );
             context.go('/home');
+          } else if (roomState is RoomLeft) {
+            _saveTripHistory(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('คุณออกจากการเดินทาง'),
+                backgroundColor: Colors.orange[600],
+              ),
+            );
+            context.go('/home');
+          } else if (roomState is RoomTripStarted) {
+            _tripStartTime = DateTime.now();
+            final roomBloc = context.read<RoomBloc>();
+            _tripHostName = roomBloc.hostName;
+            _tripMemberNames = roomState.members
+                .map((m) => m.name)
+                .toList();
+          } else if (roomState is RoomMemberLeft) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(
+                      Icons.wifi_off_rounded,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '${roomState.memberName} ขาดการเชื่อมต่อ!',
+                        style: textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.red[600],
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          } else if (roomState is RoomEmergencyState) {
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => AlertDialog(
+                backgroundColor: Colors.red[900],
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                title: Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.white,
+                      size: 40,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'SOS ALERT!',
+                      style: textTheme.titleLarge?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                content: Text(
+                  '${roomState.senderId} ต้องการความช่วยเหลือด่วน!\nโปรดเช็กพิกัดบนเรดาร์และรีบไปหาทันที!',
+                  style: textTheme.bodyLarge?.copyWith(color: Colors.white),
+                ),
+                actions: [
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.red[900],
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(
+                      'รับทราบ',
+                      style: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            );
           }
         },
         builder: (context, roomState) {
           // ==========================================
           // 🟢 STATE 3: ทริปเริ่มแล้ว (Active)
           // ==========================================
-          if (roomState is RoomTripStarted || roomState is RoomTrackingUpdated) {
-            return _buildActiveRadar(context, roomState); 
-          }
-
-          // ==========================================
-          // ⏳ STATE 2: อยู่ในห้อง แต่ยังไม่เริ่ม (Standby)
-          // ==========================================
-          if (roomState is RoomCreated || roomState is RoomJoined) {
-            final isHost = context.read<RoomBloc>().isHost;
-            return Scaffold(
-              backgroundColor: const Color(0xFF1E1E1E),
-              body: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.radar, size: 100, color: Colors.orange[300]),
-                    const SizedBox(height: 20),
-                    Text(
-                      isHost ? 'Ready to explore?' : 'Waiting for Host...',
-                      style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      isHost ? 'Go back to lobby to start the trip' : 'The radar will activate once the host starts',
-                      style: TextStyle(color: Colors.grey[400], fontSize: 14),
-                    ),
-                    const SizedBox(height: 30),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        if (isHost) context.go('/lobby');
-                        else context.go('/scan');
-                      },
-                      icon: const Icon(Icons.group),
-                      label: const Text('Go to Team Lobby'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[600], foregroundColor: Colors.white),
-                    )
-                  ],
-                ),
-              ),
-            );
+          if (roomState is RoomTripStarted ||
+              roomState is RoomTrackingUpdated) {
+            return _buildActiveRadar(context, roomState);
           }
 
           // ==========================================
           // 🛑 STATE 1: ยังไม่มีห้อง (Offline / Initial)
           // ==========================================
           return Scaffold(
-            backgroundColor: const Color(0xFF121212),
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.radar, size: 100, color: Colors.grey[700]), 
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Radar Offline',
-                    style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Create or join a room to activate radar',
-                    style: TextStyle(color: Colors.grey[500], fontSize: 14),
-                  ),
-                  const SizedBox(height: 40),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      OutlinedButton(
-                        onPressed: () => context.go('/scan'), 
-                        style: OutlinedButton.styleFrom(foregroundColor: Colors.greenAccent),
-                        child: const Text('Join Room'),
+            backgroundColor: AppColors.background,
+            body: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Spacer(),
+
+                    // 🖼️ ภาพประกอบตรงกลาง
+                    SvgPicture.asset(
+                      'assets/Illustration/vf.svg', 
+                      width: 220, 
+                      height: 220,
+                    ),
+                    const SizedBox(height: 40),
+
+                    // 📝 ข้อความ Headline
+                    Text(
+                      'เรดาห์ ออฟไลน์',
+                      style: textTheme.headlineSmall?.copyWith(
+                        fontSize: 30,
+                        color: AppColors.textHigh,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.5,
                       ),
-                      const SizedBox(width: 16),
-                      ElevatedButton(
-                        onPressed: () => context.go('/lobby'), 
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green[600], foregroundColor: Colors.white),
-                        child: const Text('Create Room'),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      
+                      'สร้างห้องเพื่อเป็นผู้นำทาง หรือเข้าร่วม\nเรดาร์ของเพื่อนเพื่อเริ่มการเดินทาง',
+                      textAlign: TextAlign.center,
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: AppColors.textMedium,
+                        height: 1.5,
+                        fontSize: 15
                       ),
-                    ],
-                  )
-                ],
+                    ),
+                    
+                    const SizedBox(height: 48),
+
+                    // 🟢 เปลี่ยนปุ่มเป็นแนวนอนซ้าย-ขวา
+                    Row(
+                      children: [
+                        // 🔘 ปุ่มซ้าย: สร้างกลุ่ม (Host Room)
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => context.go('/lobby'),
+                            borderRadius: BorderRadius.circular(24),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(24),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.primary.withOpacity(0.3),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    child: SvgPicture.asset(
+                                      'assets/icons/app/Crown1.svg',
+                                      width: 40,
+                                      height: 40,
+                                      colorFilter: const ColorFilter.mode(Colors.amber, BlendMode.srcIn),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'สร้างกลุ่ม',
+                                    style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        
+                        const SizedBox(width: 16), // ระยะห่างระหว่าง 2 ปุ่ม
+
+                        // 🔘 ปุ่มขวา: เข้าร่วมกลุ่ม (Join Room)
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => context.go('/scan'),
+                            borderRadius: BorderRadius.circular(24),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(color: AppColors.border, width: 1.5),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.03),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    child: SvgPicture.asset(
+                                      'assets/icons/app/joinnn.svg',
+                                      width: 40,
+                                      height: 40,
+                                      colorFilter: const ColorFilter.mode(Colors.blue, BlendMode.srcIn),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'เข้าร่วมกลุ่ม',
+                                    style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: AppColors.textHigh),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const Spacer(flex: 2), // ดันให้องค์ประกอบอยู่ตรงกลางพอดี
+                  ],
+                ),
               ),
             ),
-          );
+          ); 
         },
       ),
     );
@@ -211,203 +532,426 @@ class _RadarPageState extends State<RadarPage> with SingleTickerProviderStateMix
   // ==========================================
   Widget _buildActiveRadar(BuildContext context, RoomState roomState) {
     final myDeviceId = context.read<RoomBloc>().deviceId;
+    final textTheme = Theme.of(context).textTheme; // 🟢 ดึง Theme กลาง
 
     List<PeerEntity> tripMembers = [];
-    if (roomState is RoomTripStarted) { // ดึงข้อมูลตอนเริ่มทริป
-      tripMembers = roomState.members.where((m) => m.id != myDeviceId).toList();
-    } else if (roomState is RoomTrackingUpdated) { // ดึงข้อมูลตอน GPS ขยับ
-      tripMembers = roomState.members.where((m) => m.id != myDeviceId).toList();
+    if (roomState is RoomTripStarted) {
+      tripMembers = roomState.members
+          .where((m) => m.id != myDeviceId)
+          .toList();
+    } else if (roomState is RoomTrackingUpdated) {
+      tripMembers = roomState.members
+          .where((m) => m.id != myDeviceId)
+          .toList();
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1E1E1E),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          icon: const Icon(Icons.power_settings_new_rounded, color: Colors.redAccent),
+          icon: const Icon(
+            Icons.power_settings_new_rounded,
+            color: Colors.redAccent,
+          ),
           onPressed: _showEndTripDialog,
         ),
-        title: const Text(
+        title: Text(
           'Trail Radar',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: textTheme.titleLarge?.copyWith(
+            color: AppColors.textHigh,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.my_location_rounded, color: Colors.greenAccent),
-            onPressed: () {
-              // TODO: Re-center
-            },
-          ),
-        ],
       ),
-      body: Column(
-        children: [
-          // 📍 พิกัดตัวเอง
-          BlocBuilder<LocationBloc, LocationState>(
-            builder: (context, locationState) {
-              if (locationState is LocationError) {
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(8),
-                  color: Colors.red[400],
-                  child: Text(locationState.message, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
-                );
-              }
-              if (locationState is LocationTracking) {
-                final pos = locationState.position;
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                  color: Colors.black45,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.gps_fixed, color: Colors.greenAccent, size: 16),
-                      const SizedBox(width: 8),
-                      Text(
-                        'My GPS: ${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}',
-                        style: const TextStyle(color: Colors.greenAccent, fontFamily: 'monospace'),
-                      ),
-                    ],
-                  ),
-                );
-              }
-              return Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                color: Colors.black45,
-                child: const Text('Acquiring GPS Signal...', style: TextStyle(color: Colors.orangeAccent), textAlign: TextAlign.center),
-              );
-            },
-          ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          final roomBloc = context.read<RoomBloc>();
+          final locState = _locationBloc.state;
 
-          // 🧭 เรดาร์
-          Expanded(
-            flex: 3,
-            child: Center(child: _buildRadarCircle(tripMembers)),
-          ),
-
-          // 👥 รายชื่อเพื่อน
-          Expanded(
-            flex: 2,
-            child: Container(
-              padding: const EdgeInsets.only(top: 24, left: 24, right: 24),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+          showDialog(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              title: Row(
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Team Members',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.green[100],
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${tripMembers.length + 1} Connected', 
-                          style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ],
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.red,
+                    size: 28,
                   ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: tripMembers.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        return _buildMemberCard(tripMembers[index]);
-                      },
+                  const SizedBox(width: 8),
+                  Text(
+                    'Emergency SOS',
+                    style: textTheme.titleLarge?.copyWith(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ],
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRadarCircle(List<PeerEntity> members) {
-    return Container(
-      width: 320,
-      height: 320,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.greenAccent.withOpacity(0.05),
-        border: Border.all(color: Colors.greenAccent.withOpacity(0.3), width: 2),
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: 220,
-            height: 220,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.greenAccent.withOpacity(0.2), width: 1),
-            ),
-          ),
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.greenAccent.withOpacity(0.2), width: 1),
-            ),
-          ),
-          Container(width: 320, height: 1, color: Colors.greenAccent.withOpacity(0.2)),
-          Container(width: 1, height: 320, color: Colors.greenAccent.withOpacity(0.2)),
-
-          AnimatedBuilder(
-            animation: _radarController,
-            builder: (context, child) {
-              return Transform.rotate(
-                angle: _radarController.value * 2 * math.pi,
-                child: Container(
-                  width: 320,
-                  height: 320,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: SweepGradient(
-                      colors: [
-                        Colors.greenAccent.withOpacity(0.0),
-                        Colors.greenAccent.withOpacity(0.5),
-                      ],
-                      stops: const [0.5, 1.0],
-                      startAngle: 0.0,
-                      endAngle: math.pi / 2,
+              content: Text(
+                'คุณแน่ใจหรือไม่ว่าต้องการส่งสัญญาณฉุกเฉินให้เพื่อนทุกคนในทีม?\n(ใช้ในกรณีฉุกเฉินเท่านั้น)',
+                style: textTheme.bodyLarge,
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(
+                    'ยกเลิก',
+                    style: textTheme.labelLarge?.copyWith(
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
-              );
-            },
-          ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red[600],
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
 
-          Container(
-            width: 20,
-            height: 20,
-            decoration: const BoxDecoration(
-              color: Colors.blueAccent,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(color: Colors.blueAccent, blurRadius: 10, spreadRadius: 2),
+                    double currentLat = 0.0;
+                    double currentLng = 0.0;
+
+                    if (locState is LocationTracking) {
+                      currentLat = locState.position.latitude;
+                      currentLng = locState.position.longitude;
+                    }
+
+                    roomBloc.add(
+                      RoomSendSOSEvent(
+                        latitude: currentLat,
+                        longitude: currentLng,
+                      ),
+                    );
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'ส่งสัญญาณ SOS ฉุกเฉินเรียบร้อย!',
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        backgroundColor: Colors.red[600],
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  child: Text(
+                    'ส่ง SOS',
+                    style: textTheme.labelLarge?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ],
             ),
-            child: const Center(
-              child: Icon(Icons.navigation_rounded, size: 12, color: Colors.white),
+          );
+        },
+        backgroundColor: Colors.red[600],
+        elevation: 8,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: SvgPicture.asset('assets/icons/app/hand.svg',width: 40,height: 40,color: Colors.white,)
+      ),
+
+      body: BlocListener<LocationBloc, LocationState>(
+        listener: (context, locationState) {
+          if (locationState is LocationTracking) {
+            final lat = locationState.position.latitude;
+            final lng = locationState.position.longitude;
+
+            // 🟢 1. ส่งพิกัดไปให้เพื่อนในห้อง (โค้ดเดิมของคุณ)
+            context.read<RoomBloc>().add(
+              SendMyLocationEvent(latitude: lat, longitude: lng),
+            );
+
+            // 🟢 2. เช็กระยะห่างเพื่อนเพื่อเตือน (โค้ดเดิมของคุณ)
+            if (tripMembers.isNotEmpty) {
+              _checkMemberDistances(tripMembers, lat, lng);
+            }
+
+            // 🟢 3. *** ระบบเก็บระยะทางและเส้นทาง (ใหม่!) ***
+            // จะเก็บเส้นทางก็ต่อเมื่อ "ทริปเริ่มแล้ว" เท่านั้น
+            if (_tripStartTime != null) {
+              if (_routeLatitudes.isEmpty) {
+                // ถ้าเป็นจุดแรกสุด ก็เก็บเลย
+                _routeLatitudes.add(lat);
+                _routeLongitudes.add(lng);
+              } else {
+                // ถอยไปดูจุดล่าสุดที่เราเดินผ่านมา
+                final lastLat = _routeLatitudes.last;
+                final lastLng = _routeLongitudes.last;
+                
+                // คำนวณว่าพิกัดใหม่ ขยับจากจุดเดิมกี่เมตร
+                final dist = LocationCalculator.calculateDistance(lastLat, lastLng, lat, lng);
+                
+                // 💡 กรอง Noise: ถ้าเดินขยับเกิน 2 เมตร ถึงจะนับว่าเดินจริง (ป้องกัน GPS แกว่งตอนยืนเฉยๆ)
+                if (dist > 2.0) {
+                  _routeLatitudes.add(lat);
+                  _routeLongitudes.add(lng);
+                  _totalDistance += dist; // บวกรวมระยะทางเข้าไป!
+                }
+              }
+            }
+          }
+        },
+        child: BlocBuilder<LocationBloc, LocationState>(
+          builder: (context, locationState) {
+            double? myLat;
+            double? myLng;
+
+            if (locationState is LocationTracking) {
+              myLat = locationState.position.latitude;
+              myLng = locationState.position.longitude;
+            }
+
+            return StreamBuilder<CompassEvent>(
+              stream: FlutterCompass.events,
+              builder: (context, snapshot) {
+                final rawHeading = snapshot.data?.heading ?? 0.0;
+                _smoothedHeading = _smoothAngle(
+                  _smoothedHeading,
+                  rawHeading,
+                  _headingSmoothingFactor,
+                );
+                final double myHeading = _smoothedHeading;
+
+                return Column(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: Center(
+                        child: _buildRadarCircle(
+                          context, // 🟢 ส่ง Context เข้าไปใช้งาน Theme
+                          tripMembers,
+                          myLat,
+                          myLng,
+                          myHeading,
+                        ),
+                      ),
+                    ),
+
+                    Expanded(
+                      flex: 2,
+                      child: Container(
+                        padding: const EdgeInsets.only(
+                          top: 24,
+                          left: 24,
+                          right: 24,
+                        ),
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(32),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'สมาชิกในทีม',
+                                  style: textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green[100],
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    '${tripMembers.length + 1} เชื่อมต่อ',
+                                    style: textTheme.labelMedium?.copyWith(
+                                      color: Colors.green[800],
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Expanded(
+                              child: ListView.separated(
+                                itemCount: tripMembers.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 12),
+                                itemBuilder: (context, index) {
+                                  return _buildMemberCard(
+                                    context, // 🟢 ส่ง Context
+                                    tripMembers[index],
+                                    myLat,
+                                    myLng,
+                                    myHeading,
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // 🟢 ฟังก์ชันวาดวงกลมเรดาร์ (รับ BuildContext เพิ่มเติม)
+  Widget _buildRadarCircle(
+    BuildContext context,
+    List<PeerEntity> members,
+    double? myLat,
+    double? myLng,
+    double myHeading,
+  ) {
+    const double radarSize = 320.0;
+    const double centerOffset = radarSize / 2;
+    const double maxDistanceMeters = 200.0;
+
+    List<Widget> radarBlips = [];
+
+    if (myLat != null && myLng != null) {
+      for (var member in members) {
+        if (member.latitude != null && member.longitude != null) {
+          double distance = LocationCalculator.calculateDistance(
+            myLat,
+            myLng,
+            member.latitude!,
+            member.longitude!,
+          );
+
+          double drawDistance = distance > maxDistanceMeters
+              ? maxDistanceMeters
+              : distance;
+          double scaledRadius =
+              (drawDistance / maxDistanceMeters) * centerOffset;
+
+          double bearing = LocationCalculator.calculateBearing(
+            myLat,
+            myLng,
+            member.latitude!,
+            member.longitude!,
+          );
+
+          double relativeBearing = bearing - myHeading;
+          double mathAngle = (relativeBearing - 90) * (math.pi / 180);
+
+          double x = centerOffset + (scaledRadius * math.cos(mathAngle));
+          double y = centerOffset + (scaledRadius * math.sin(mathAngle));
+
+          radarBlips.add(
+            Positioned(
+              left: x - 14,
+              top: y - 14,
+              child: _buildRadarDot(context, member),
+            ),
+          );
+        }
+      }
+    }
+
+    return SizedBox(
+      width: radarSize,
+      height: radarSize,
+      child: Stack(
+        children: [
+          Center(
+            child: Container(
+              width: radarSize * 0.35,
+              height: radarSize * 0.35,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.primary.withOpacity(0.15),
+                  width: 1,
+                ),
+              ),
+            ),
+          ),
+          Center(
+            child: Container(
+              width: radarSize * 0.65,
+              height: radarSize * 0.65,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.primary.withOpacity(0.15),
+                  width: 1,
+                ),
+              ),
+            ),
+          ),
+          Center(
+            child: Container(
+              width: radarSize * 0.95,
+              height: radarSize * 0.95,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.primary.withOpacity(0.15),
+                  width: 1,
+                ),
+              ),
+            ),
+          ),
+
+          ...radarBlips,
+
+          Center(
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: Colors.blue[600],
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white,
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.blue[600]!.withOpacity(0.6),
+                    blurRadius: 8,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.navigation_rounded,
+                  size: 14,
+                  color: Colors.white,
+                ),
+              ),
             ),
           ),
         ],
@@ -415,8 +959,97 @@ class _RadarPageState extends State<RadarPage> with SingleTickerProviderStateMix
     );
   }
 
-  Widget _buildMemberCard(PeerEntity member) {
-    final imageBytes = ImageHelper.decodeBase64(member.imageBase64);
+  // 🔴 ฟังก์ชันสร้างจุด 1 จุดบนเรดาร์
+  Widget _buildRadarDot(BuildContext context, PeerEntity member) {
+    final textTheme = Theme.of(context).textTheme; // 🟢 ดึง Theme กลาง
+    final color = member.isHost ? Colors.amber[700]! : Colors.green[700]!;
+
+    return Tooltip(
+      message: member.name,
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: Colors.white,
+            width: 2.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.6),
+              blurRadius: 10,
+              spreadRadius: 2,
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            member.name.isNotEmpty ? member.name[0].toUpperCase() : '?',
+            style: textTheme.labelSmall?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 🟢 ฟังก์ชันสร้างการ์ดรายชื่อเพื่อน 
+  Widget _buildMemberCard(
+    BuildContext context,
+    PeerEntity member,
+    double? myLat,
+    double? myLng,
+    double myHeading,
+  ) {
+    final textTheme = Theme.of(context).textTheme; // 🟢 ดึง Theme กลาง
+
+    if (!_imageCache.containsKey(member.id)) {
+      _imageCache[member.id] = ImageHelper.decodeBase64(
+        member.imageBase64,
+      );
+    }
+    final imageBytes = _imageCache[member.id];
+
+    String distanceText = 'รอสัญญาณ GPS...';
+    double bearingAngle = 0.0;
+    bool canCalculate = false;
+    bool isTooClose = false;
+
+    if (myLat != null &&
+        myLng != null &&
+        member.latitude != null &&
+        member.longitude != null) {
+      canCalculate = true;
+
+      final distanceInMeters = LocationCalculator.calculateDistance(
+        myLat,
+        myLng,
+        member.latitude!,
+        member.longitude!,
+      );
+
+      if (distanceInMeters >= 1000) {
+        distanceText =
+            '${(distanceInMeters / 1000).toStringAsFixed(1)} km';
+      } else {
+        distanceText = '${distanceInMeters.toStringAsFixed(0)} m';
+      }
+
+      isTooClose = distanceInMeters < 10.0;
+
+      final bearingInDegrees = LocationCalculator.calculateBearing(
+        myLat,
+        myLng,
+        member.latitude!,
+        member.longitude!,
+      );
+      final relativeBearing = bearingInDegrees - myHeading;
+      bearingAngle = relativeBearing * (math.pi / 180);
+    }
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -429,44 +1062,77 @@ class _RadarPageState extends State<RadarPage> with SingleTickerProviderStateMix
         children: [
           CircleAvatar(
             radius: 24,
-            backgroundColor: member.isHost ? Colors.green[100] : Colors.blue[100],
-            backgroundImage: imageBytes != null ? MemoryImage(imageBytes) : null,
+            backgroundColor: member.isHost
+                ? Colors.green[100]
+                : Colors.blue[100],
+            backgroundImage: imageBytes != null
+                ? MemoryImage(imageBytes)
+                : null,
             child: imageBytes == null
                 ? Text(
-                    member.name.isNotEmpty ? member.name[0].toUpperCase() : '?',
-                    style: TextStyle(
-                      color: member.isHost ? Colors.green[700] : Colors.blue[700],
+                    member.name.isNotEmpty
+                        ? member.name[0].toUpperCase()
+                        : '?',
+                    style: textTheme.titleMedium?.copyWith(
+                      color: member.isHost
+                          ? Colors.green[700]
+                          : Colors.blue[700],
                       fontWeight: FontWeight.bold,
                     ),
                   )
                 : null,
           ),
           const SizedBox(width: 16),
-          
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Text(member.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text(
+                      member.name,
+                      style: textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
                     if (member.isHost) ...[
                       const SizedBox(width: 8),
-                      Icon(Icons.star_rounded, size: 16, color: Colors.amber[600]),
+                      Icon(
+                        Icons.star_rounded,
+                        size: 16,
+                        color: Colors.amber[600],
+                      ),
                     ],
                   ],
                 ),
                 const SizedBox(height: 4),
-                
                 Row(
                   children: [
-                    Icon(Icons.location_on, size: 14, color: Colors.grey[600]),
-                    const SizedBox(width: 4),
-                    Text(
-                      member.latitude != null && member.longitude != null
-                          ? 'Lat: ${member.latitude!.toStringAsFixed(4)}, Lng: ${member.longitude!.toStringAsFixed(4)}'
-                          : 'Waiting for GPS...',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                    Icon(
+                      canCalculate
+                          ? Icons.social_distance_rounded
+                          : Icons.location_searching_rounded,
+                      size: 14,
+                      color: canCalculate
+                          ? Colors.green[600]
+                          : Colors.grey[500],
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        distanceText,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: canCalculate
+                              ? Colors.grey[800]
+                              : Colors.grey[500],
+                          fontWeight: canCalculate
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
@@ -475,10 +1141,21 @@ class _RadarPageState extends State<RadarPage> with SingleTickerProviderStateMix
           ),
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: Colors.green[50], shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: canCalculate ? Colors.green[50] : Colors.grey[200],
+              shape: BoxShape.circle,
+            ),
             child: Transform.rotate(
-              angle: math.pi / 4, 
-              child: Icon(Icons.navigation_rounded, color: Colors.green[600], size: 20),
+              angle: (canCalculate && !isTooClose) ? bearingAngle : 0.0,
+              child: Icon(
+                isTooClose
+                    ? Icons.adjust_rounded
+                    : (canCalculate
+                          ? Icons.navigation_rounded
+                          : Icons.location_searching_rounded),
+                color: canCalculate ? Colors.green[600] : Colors.grey[400],
+                size: 20,
+              ),
             ),
           ),
         ],

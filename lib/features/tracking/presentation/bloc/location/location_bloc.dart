@@ -44,7 +44,7 @@ class LocationBloc extends Bloc<LocationEvent, LocationState> {
     // 2. ถ้าผ่านหมด เริ่มดูดข้อมูลแบบ Stream
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 2,
+      distanceFilter: 5, // 🧭 เพิ่มจาก 2 เป็น 5 เมตร เพื่อลด noise จาก GPS ที่ทำให้เข็มทิศแกว่งเวลาเดินช้าๆ
     );
 
     _positionStream?.cancel(); // ยกเลิกอันเก่าก่อนถ้ามี

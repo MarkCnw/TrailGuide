@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:trail_guide/features/history/domain/entities/trip_history_entity.dart';
 import 'package:trail_guide/features/history/presentation/pages/history_page.dart';
+import 'package:trail_guide/features/history/presentation/pages/trip_detail_page.dart';
 import 'package:trail_guide/features/onboarding/data/datasources/onboarding_local_data_source.dart';
 import 'package:trail_guide/features/p2p/presentation/pages/home_page.dart';
 import 'package:trail_guide/features/p2p/presentation/pages/lobby_page.dart';
@@ -12,19 +14,15 @@ import 'package:trail_guide/injection_container.dart';
 // Import หน้าจอที่มีอยู่จริง
 import '../../../features/onboarding/presentation/pages/profile_setup_page.dart';
 import '../../../features/p2p/presentation/pages/radar_page.dart';
-import '../../../features/p2p/presentation/widgets/scaffold_with_navbar.dart'; 
-
-
-
+import '../../../features/p2p/presentation/widgets/scaffold_with_navbar.dart';
 
 class AppRouter {
   // Key สำหรับ Navigator หลัก (เต็มจอ)
   static final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
-
   static final router = GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: '/home', 
+    initialLocation: '/home',
     redirect: (context, state) async {
       final isLoggedIn = await sl<OnboardingLocalDataSource>().hasUser();
       final isLoggingIn = state.uri.toString() == '/profile_setup';
@@ -45,7 +43,7 @@ class AppRouter {
       // ====================================================
       // 🟢 GROUP 1: Outside Shell (หน้าเต็มจอ ไม่มีเมนูล่าง)
       // ====================================================
-      
+
       // 1. หน้าตั้งค่าโปรไฟล์ (เข้าครั้งแรก)
       GoRoute(
         path: '/profile_setup',
@@ -57,7 +55,7 @@ class AppRouter {
       GoRoute(
         path: '/scan',
         parentNavigatorKey: _rootNavigatorKey, // บังคับเด้งทับ Shell
-        builder: (context, state) => const ScanPage(), 
+        builder: (context, state) => const ScanPage(),
       ),
 
       // 3. หน้า Lobby (กด Host จาก Home -> เด้งมารอเพื่อน)
@@ -67,12 +65,12 @@ class AppRouter {
         builder: (context, state) => const LobbyPage(),
       ),
 
-
-
       GoRoute(
         path: '/settings',
         builder: (context, state) => const SettingsPage(),
       ),
+
+      
 
       // ====================================================
       // 🔵 GROUP 2: Inside Shell (หน้าหลัก มีเมนูล่าง)
