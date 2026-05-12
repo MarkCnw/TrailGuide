@@ -53,6 +53,7 @@ class PeerEntity extends Equatable {
     );
   }
 
+  // 🔧 Bug #9 Fix: เพิ่ม lastUpdatedAt และ isActive เพื่อให้ Equatable เปรียบเทียบครบ
   @override
-  List<Object?> get props => [id, name, rssi, isLost, imageBase64, isHost, latitude, longitude];
+  List<Object?> get props => [id, name, rssi, isLost, imageBase64, isHost, latitude, longitude, lastUpdatedAt, isActive];
 }

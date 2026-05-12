@@ -6,6 +6,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:trail_guide/features/p2p/presentation/bloc/p2p/p2p_bloc.dart';
 
+import '../../../../core/constants/app_colors.dart';
+
 import '../../../onboarding/presentation/cubit/onboarding_cubit.dart';
 import '../../domain/entities/peer_entity.dart';
 import '../../utils/image_helper.dart';
@@ -29,13 +31,11 @@ class _ScanPageState extends State<ScanPage> {
   String? _memberImageBase64;
 
   PeerEntity? _selectedHost;
-  // 🌟 1. ประกาศตัวแปรเก็บ P2PBloc ไว้
   late final P2PBloc _p2pBloc;
 
   @override
   void initState() {
     super.initState();
-    // 🌟 2. ดึงค่า P2PBloc จาก context มาเก็บไว้ในตัวแปร ตั้งแต่ตอนหน้าจอยังสมบูรณ์
     _p2pBloc = context.read<P2PBloc>();
     _loadMemberInfo();
     _startDiscovery();
@@ -63,7 +63,6 @@ class _ScanPageState extends State<ScanPage> {
   @override
   void dispose() {
     _passwordController.dispose();
-    // 🌟 3. สั่งหยุดสแกนผ่านตัวแปร _p2pBloc โดยตรง (ห้ามใช้ context ตรงนี้เด็ดขาด)
     _p2pBloc.add(StopDiscoveryEvent());
     super.dispose();
   }
@@ -110,63 +109,9 @@ class _ScanPageState extends State<ScanPage> {
     );
   }
 
-  void _showLeaveRoomDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.orange[50],
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.exit_to_app_rounded,
-                color: Colors.orange[600],
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Text('Leave Room? '),
-          ],
-        ),
-        content: const Text(
-          'Are you sure you want to leave this room? ',
-          style: TextStyle(color: Colors.black54),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.read<RoomBloc>().add(const LeaveRoomEvent());
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange[600],
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Text('Leave'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showRoomClosedDialog(String reason) {
+    final textTheme = Theme.of(context).textTheme;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -189,12 +134,17 @@ class _ScanPageState extends State<ScanPage> {
               ),
             ),
             const SizedBox(width: 12),
-            const Text('Room Closed'),
+            Text(
+              'Room Closed',
+              style: textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
         content: Text(
           reason,
-          style: const TextStyle(color: Colors.black54),
+          style: textTheme.bodyMedium?.copyWith(color: Colors.black54),
         ),
         actions: [
           SizedBox(
@@ -212,7 +162,13 @@ class _ScanPageState extends State<ScanPage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text('OK'),
+              child: Text(
+                'OK',
+                style: textTheme.titleMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
         ],
@@ -224,7 +180,10 @@ class _ScanPageState extends State<ScanPage> {
   Widget build(BuildContext context) {
     return BlocConsumer<RoomBloc, RoomState>(
       listener: (context, state) {
-        if (state is RoomTripStarted) {
+        // 🟢 เพิ่มจุดนี้: ถ้าเข้าห้องสำเร็จ ให้โยนไปหน้า Lobby 
+        if (state is RoomJoined) {
+          context.go('/lobby');
+        } else if (state is RoomTripStarted) {
           context.go('/radar');
         } else if (state is RoomLeft) {
           _startDiscovery();
@@ -266,93 +225,84 @@ class _ScanPageState extends State<ScanPage> {
         }
       },
       builder: (context, roomState) {
-        if (roomState is RoomJoined) {
-          return _buildInRoomView(roomState);
-        }
-
+        // 🛑 ถอด _buildInRoomView ออกไปแล้ว
         if (roomState is RoomJoining) {
           return _buildJoiningView(roomState);
         }
-
         return _buildScanView();
       },
     );
   }
 
   Widget _buildScanView() {
+    final textTheme = Theme.of(context).textTheme;
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () {
-            // 🛑 เรียกผ่านตัวแปรแทน
-            _p2pBloc.add(StopDiscoveryEvent());
-            context.go('/radar');
-          },
-        ),
-        title: const Text(
-          'Join Room',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _startDiscovery,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            color: Colors.white,
-            child: Column(
-              children: [
-                Icon(
-                  Icons.wifi_tethering_rounded,
-                  size: 48,
-                  color: Colors.blue[600],
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Searching for nearby rooms.. .',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              color: Colors.white,
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        onPressed: () {
+                          _p2pBloc.add(StopDiscoveryEvent());
+                          context.go('/radar');
+                        },
+                      ),
+                    ],
                   ),
-                ),
-                Text(
-                  'Make sure you\'re near the host',
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                ),
-              ],
+                  Icon(
+                    Icons.wifi_tethering_rounded,
+                    size: 48,
+                    color: Colors.blue[600],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'กำลังค้นหาห้องใกล้เคียง...',
+                    style: textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Text(
+                    'ตรวจสอบให้เเน่ใจว่าคุณอยู่ใกล้Host',
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Expanded(
-            child: BlocBuilder<P2PBloc, P2PState>(
-              builder: (context, state) {
-                if (state is P2PLoading) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (state is P2PUpdated) {
-                  if (state.peers.isEmpty) {
-                    return _buildEmptyView();
+            Expanded(
+              child: BlocBuilder<P2PBloc, P2PState>(
+                builder: (context, state) {
+                  if (state is P2PLoading) {
+                    return const Center(
+                      child: CircularProgressIndicator(),
+                    );
                   }
-                  return _buildRoomList(state.peers);
-                }
 
-                return const Center(child: CircularProgressIndicator());
-              },
+                  if (state is P2PUpdated) {
+                    if (state.peers.isEmpty) {
+                      return _buildEmptyView();
+                    }
+                    return _buildRoomList(state.peers);
+                  }
+
+                  return const Center(child: CircularProgressIndicator());
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -370,6 +320,7 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   Widget _buildRoomItem(PeerEntity peer) {
+    final textTheme = Theme.of(context).textTheme;
     final hostName = _getHostName(peer.name);
 
     return Container(
@@ -404,12 +355,9 @@ class _ScanPageState extends State<ScanPage> {
                   ),
                   child: Center(
                     child: Text(
-                      hostName.isNotEmpty
-                          ? hostName[0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(
+                      hostName.isNotEmpty ? hostName[0].toUpperCase() : '?',
+                      style: textTheme.headlineSmall?.copyWith(
                         color: Colors.white,
-                        fontSize: 24,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -421,9 +369,8 @@ class _ScanPageState extends State<ScanPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '$hostName\'s Room',
-                        style: const TextStyle(
-                          fontSize: 16,
+                        '$hostName\'s ห้อง',
+                        style: textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -441,9 +388,8 @@ class _ScanPageState extends State<ScanPage> {
                           const SizedBox(width: 6),
                           Text(
                             'Available',
-                            style: TextStyle(
+                            style: textTheme.labelMedium?.copyWith(
                               color: Colors.grey[600],
-                              fontSize: 13,
                             ),
                           ),
                         ],
@@ -460,9 +406,9 @@ class _ScanPageState extends State<ScanPage> {
                     color: Colors.green[600],
                     borderRadius: BorderRadius.circular(24),
                   ),
-                  child: const Text(
-                    'Join',
-                    style: TextStyle(
+                  child: Text(
+                    'เข้า',
+                    style: textTheme.labelLarge?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                     ),
@@ -477,6 +423,8 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   Widget _buildEmptyView() {
+    final textTheme = Theme.of(context).textTheme;
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -488,17 +436,16 @@ class _ScanPageState extends State<ScanPage> {
           ),
           const SizedBox(height: 16),
           Text(
-            'No rooms found nearby',
-            style: TextStyle(
-              fontSize: 18,
+            'ไม่พบห้องใกล้เคียง',
+            style: textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w600,
               color: Colors.grey[600],
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Ask the host to create a room first',
-            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+            'ให้Hostสร้างห้องก่อน',
+            style: textTheme.bodyMedium?.copyWith(color: Colors.grey[500]),
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
@@ -508,7 +455,7 @@ class _ScanPageState extends State<ScanPage> {
               foregroundColor: Colors.white,
             ),
             icon: const Icon(Icons.refresh),
-            label: const Text('Refresh'),
+            label: const Text('รีเฟรช'),
           ),
         ],
       ),
@@ -516,6 +463,7 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   Widget _buildPasswordBottomSheet(PeerEntity host) {
+    final textTheme = Theme.of(context).textTheme;
     final hostName = _getHostName(host.name);
 
     return Container(
@@ -554,16 +502,17 @@ class _ScanPageState extends State<ScanPage> {
             ),
             const SizedBox(height: 20),
             Text(
-              'Join $hostName\'s Room',
-              style: const TextStyle(
-                fontSize: 22,
+              'Join $hostName\'s ห้อง',
+              style: textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Enter the 4-digit password',
-              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              'ป้อนรหัสผ่าน 4 หลัก',
+              style: textTheme.bodyMedium?.copyWith(
+                color: Colors.grey[600],
+              ),
             ),
             const SizedBox(height: 24),
             TextField(
@@ -572,15 +521,14 @@ class _ScanPageState extends State<ScanPage> {
               maxLength: 4,
               autofocus: true,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 32,
+              style: textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 letterSpacing: 16,
               ),
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: InputDecoration(
                 hintText: '••••',
-                hintStyle: TextStyle(
+                hintStyle: textTheme.headlineMedium?.copyWith(
                   color: Colors.grey[300],
                   letterSpacing: 16,
                 ),
@@ -616,10 +564,10 @@ class _ScanPageState extends State<ScanPage> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                child: const Text(
-                  'Join Room',
-                  style: TextStyle(
-                    fontSize: 18,
+                child: Text(
+                  'เข้าห้อง',
+                  style: textTheme.titleMedium?.copyWith(
+                    color: Colors.white,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -633,6 +581,8 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   Widget _buildJoiningView(RoomJoining state) {
+    final textTheme = Theme.of(context).textTheme;
+
     return Scaffold(
       backgroundColor: Colors.grey[50],
       body: Center(
@@ -645,335 +595,20 @@ class _ScanPageState extends State<ScanPage> {
             ),
             const SizedBox(height: 24),
             Text(
-              'Joining ${state.hostName}\'s Room.. .',
-              style: const TextStyle(
-                fontSize: 18,
+              'กำลังเข้า ${state.hostName}\'s ห้อง.. .',
+              style: textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 8),
-            Text('Please wait', style: TextStyle(color: Colors.grey[600])),
+            Text(
+              'กรุณารอสักครู่..',
+              style: textTheme.bodyMedium?.copyWith(
+                color: Colors.grey[600],
+              ),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildInRoomView(RoomJoined state) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: _showLeaveRoomDialog,
-        ),
-        title: Text(
-          '${state.hostName}\'s Room',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        elevation: 0,
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 6,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.green[100],
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.people, size: 16, color: Colors.green[700]),
-                const SizedBox(width: 4),
-                Text(
-                  state.memberCountDisplay,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green[700],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // 🔧 Header ใหม่ - แสดงชื่อห้อง + รหัสผ่าน
-          Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.green[600]!, Colors.green[400]!],
-              ),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.home_rounded,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${state.hostName}\'s Room',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Colors.greenAccent,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              const Text(
-                                'Connected',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                // 🆕 แสดงรหัสผ่าน
-                if (state.roomPassword.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.lock_outline,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Password:  ',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
-                        ),
-                        Text(
-                          state.roomPassword,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          // Members List
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Members',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey[800],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: state.allMembers.length,
-                      separatorBuilder: (_, __) =>
-                          const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final member = state.allMembers[index];
-                        return _buildMemberItemInRoom(member);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Leave Button
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            child: SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: OutlinedButton.icon(
-                onPressed: _showLeaveRoomDialog,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red[600],
-                  side: BorderSide(color: Colors.red[300]!),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                icon: const Icon(Icons.exit_to_app_rounded),
-                label: const Text(
-                  'Leave Room',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMemberItemInRoom(PeerEntity member) {
-    final imageBytes = ImageHelper.decodeBase64(member.imageBase64);
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: member.isHost
-                ? Colors.green[100]
-                : Colors.blue[100],
-            backgroundImage: imageBytes != null
-                ? MemoryImage(imageBytes)
-                : null,
-            child: imageBytes == null
-                ? Text(
-                    member.name.isNotEmpty
-                        ? member.name[0].toUpperCase()
-                        : '?',
-                    style: TextStyle(
-                      color: member.isHost
-                          ? Colors.green[700]
-                          : Colors.blue[700],
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  )
-                : null,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              member.name,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 16,
-              ),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 10,
-              vertical: 4,
-            ),
-            decoration: BoxDecoration(
-              color: member.isHost ? Colors.amber[100] : Colors.green[100],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (member.isHost) ...[
-                  Icon(Icons.star, size: 14, color: Colors.amber[700]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Host',
-                    style: TextStyle(
-                      color: Colors.amber[700],
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ] else ...[
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: Colors.green[600],
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Connected',
-                    style: TextStyle(
-                      color: Colors.green[700],
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

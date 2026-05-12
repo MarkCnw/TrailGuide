@@ -18,6 +18,15 @@ import 'features/p2p/domain/usecases/watch_peers.dart';
 // Features - Onboarding
 import 'features/onboarding/data/models/user_profile_model.dart';
 
+// Features - History (Clean Architecture)
+import 'features/history/data/models/trip_history_model.dart';
+import 'features/history/data/datasources/history_local_data_source.dart';
+import 'features/history/data/repositories/history_repository_impl.dart';
+import 'features/history/domain/repositories/history_repository.dart';
+import 'features/history/domain/usecases/get_all_trips.dart';
+import 'features/history/domain/usecases/save_trip.dart';
+import 'features/history/presentation/cubit/history_cubit.dart';
+
 final sl = GetIt.instance;
 
 Future<void> init() async {
@@ -32,6 +41,7 @@ Future<void> init() async {
   final dir = await getApplicationDocumentsDirectory();
   final isar = await Isar.open([
     UserProfileModelSchema,
+    TripHistoryModelSchema, // 🆕 เพิ่ม Schema ประวัติทริป
   ], directory: dir.path);
   sl.registerLazySingleton(() => isar);
 
@@ -50,6 +60,29 @@ Future<void> init() async {
   );
 
   // ! ===========================
+  // ! Feature: History (Trip Records)
+  // ! ===========================
+
+  // Data Source
+  sl.registerLazySingleton<HistoryLocalDataSource>(
+    () => HistoryLocalDataSourceImpl(sl()),
+  );
+
+  // Repository
+  sl.registerLazySingleton<HistoryRepository>(
+    () => HistoryRepositoryImpl(sl()),
+  );
+
+  // Use Cases
+  sl.registerLazySingleton(() => GetAllTrips(sl()));
+  sl.registerLazySingleton(() => SaveTrip(sl()));
+
+  // Cubit
+  sl.registerLazySingleton<HistoryCubit>(
+    () => HistoryCubit(getAllTrips: sl(), saveTrip: sl()),
+  );
+
+  // ! ===========================
   // ! Feature: P2P (Radar & Host)
   // ! ===========================
 
@@ -61,7 +94,8 @@ Future<void> init() async {
   sl.registerLazySingleton(() => WatchPeers(sl()));
   sl.registerLazySingleton(() => WatchMessages(sl())); // 🆕
   sl.registerLazySingleton(() => BroadcastMessage(sl())); // 🆕
-  sl.registerFactory(() => LocationBloc()); // 🆕 เพิ่มบรรทัดนี้
+  // 🔧 Bug #4 Fix: เปลี่ยนจาก registerFactory เป็น registerLazySingleton เพื่อให้ใช้ instance เดียวกันทั้งแอป
+  sl.registerLazySingleton(() => LocationBloc());
   // P2P BLoC
   // 🔥 แก้ไขตรงนี้: เติม parameters ที่ขาดไปให้ครบ
   sl.registerFactory<P2PBloc>(

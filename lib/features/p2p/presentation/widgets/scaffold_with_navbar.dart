@@ -7,15 +7,18 @@ class ScaffoldWithNavBar extends StatelessWidget {
 
   const ScaffoldWithNavBar({
     required this.navigationShell,
-    Key? key,
-  }) : super(key: key ?? const ValueKey('ScaffoldWithNavBar'));
+    super.key, // 🟢 ปรับให้สั้นลงตามมาตรฐานสมัยใหม่
+  });
 
   @override
   Widget build(BuildContext context) {
     // ดึงค่า Index ปัจจุบันเพื่อเช็คว่า Tab ไหนถูกเลือกอยู่
     final int currentIndex = navigationShell.currentIndex;
+    
+    // 🟢 ดึง TextTheme จากส่วนกลางมาใช้เฉพาะฟอนต์
+    final textTheme = Theme.of(context).textTheme;
 
-    // กำหนดสีธีม (TrailGuide Theme)
+    // กำหนดสีธีม (TrailGuide Theme) ตามที่คุณกำหนดไว้
     const Color activeColor = Color(0xFF2E7D32); // สีเขียว Forest Green
     const Color inactiveColor = Colors.grey;
 
@@ -30,14 +33,20 @@ class ScaffoldWithNavBar extends StatelessWidget {
           indicatorColor: Colors.transparent, // ลบวงรีสีๆ พื้นหลังไอคอน
           overlayColor: WidgetStateProperty.all(Colors.transparent), // ลบแสงวูบวาบตอนกด
           
-          // (Optional) กำหนดสไตล์ตัวหนังสือให้ชัดเจน
+          // 🟢 เปลี่ยนมาดึงฟอนต์จาก Theme แต่กำหนดสีเอง
           labelTextStyle: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w600, color: activeColor);
+              return textTheme.labelSmall?.copyWith(
+                  fontSize: 12, 
+                  fontWeight: FontWeight.w600, 
+                  color: activeColor // 🔴 สีเดิมตามความต้องการ
+              );
             }
-            return const TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w500, color: inactiveColor);
+            return textTheme.labelSmall?.copyWith(
+                fontSize: 12, 
+                fontWeight: FontWeight.w500, 
+                color: inactiveColor // 🔴 สีเดิมตามความต้องการ
+            );
           }),
         ),
         
@@ -60,33 +69,33 @@ class ScaffoldWithNavBar extends StatelessWidget {
             // 1. 🏠 Home Tab
             NavigationDestination(
               icon: SvgPicture.asset(
-                'assets/icons/navigation/house-regular.svg',
-                width: 24,
+                'assets/icons/navigation/Home Angle 2.svg',
+                width: 26,
                 colorFilter: ColorFilter.mode(
                   currentIndex == 0 ? activeColor : inactiveColor, BlendMode.srcIn),
               ),
               selectedIcon: SvgPicture.asset(
-                'assets/icons/navigation/house-solid.svg',
-                width: 24,
+                'assets/icons/navigation/Homee.svg',
+                width: 26,
                 colorFilter: const ColorFilter.mode(activeColor, BlendMode.srcIn),
               ),
-              label: 'Home',
+              label: 'หน้าหลัก',
             ),
 
-            // 2. 📡 Radar Tab (ใช้รูปดาว Star แทนชั่วคราวตาม Asset ที่มี)
+            // 2. 📡 Radar Tab
             NavigationDestination(
               icon: SvgPicture.asset(
-                'assets/icons/navigation/star-regular.svg', 
-                width: 24,
+                'assets/icons/navigation/Round Graph.svg', 
+                width: 28,
                 colorFilter: ColorFilter.mode(
                   currentIndex == 1 ? activeColor : inactiveColor, BlendMode.srcIn),
               ),
               selectedIcon: SvgPicture.asset(
-                'assets/icons/navigation/star-solid.svg',
-                width: 24,
+                'assets/icons/navigation/radar.svg',
+                width: 28,
                 colorFilter: const ColorFilter.mode(activeColor, BlendMode.srcIn),
               ),
-              label: 'Radar',
+              label: 'เรดาร์',
             ),
 
             // 3. 📜 History Tab
@@ -102,7 +111,7 @@ class ScaffoldWithNavBar extends StatelessWidget {
                 width: 23,
                 colorFilter: const ColorFilter.mode(activeColor, BlendMode.srcIn),
               ),
-              label: 'History',
+              label: 'ประวัติ',
             ),
 
             // 4. 👤 Profile Tab
@@ -118,7 +127,7 @@ class ScaffoldWithNavBar extends StatelessWidget {
                 width: 20,
                 colorFilter: const ColorFilter.mode(activeColor, BlendMode.srcIn),
               ),
-              label: 'Profile',
+              label: 'โปรไฟล์',
             ),
           ],
         ),

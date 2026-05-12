@@ -1,15 +1,19 @@
 import 'dart:io';
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:svg_flutter/svg.dart';
 
-import 'package:geolocator/geolocator.dart'; // 📡 GPS
-import 'package:go_router/go_router.dart';
-import 'package:torch_light/torch_light.dart'; // 🔦 ไฟฉาย
-import 'package:trail_guide/features/p2p/presentation/widgets/action_card.dart';
-import 'package:trail_guide/features/p2p/presentation/widgets/hike_history_card.dart';
+import 'package:torch_light/torch_light.dart';
+// 🟢 เอา import 'package:google_fonts/google_fonts.dart'; ออกไปแล้วเพราะเราจะดึงจาก Theme แทน
 
+// 🟢 Import Design System
+import '../../../../core/constants/app_colors.dart';
 import '../../../onboarding/presentation/cubit/onboarding_cubit.dart';
+
+// 🟢 Import Location BLoC (Clean Architecture)
+import '../../../tracking/presentation/bloc/location/location_bloc.dart';
+import '../../../tracking/presentation/bloc/location/location_event.dart';
+import '../../../tracking/presentation/bloc/location/location_state.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -28,28 +32,19 @@ class _HomeView extends StatefulWidget {
 }
 
 class _HomeViewState extends State<_HomeView> {
-  // 🔦 Flashlight State
+  // 🔦 Flashlight State (เอาไว้ใน UI ได้เพราะเป็นแค่ Toggler ทั่วไป)
   bool _isFlashlightOn = false;
   bool _hasFlashlight = false;
-
-  // 📡 GPS State
-  int _gpsSignalBars = 0; // 0-4 ขีด
-  String _gpsStatusText = "Searching...";
-  Color _signalColor = Colors.grey; // สีเริ่มต้น (ไม่มีสัญญาณ)
-
-  StreamSubscription<Position>? _positionStream;
 
   @override
   void initState() {
     super.initState();
     _checkFlashlightAvailability();
-    _startGpsMonitoring();
-  }
 
-  @override
-  void dispose() {
-    _positionStream?.cancel(); // ปิด GPS เมื่อออกจากหน้าเพื่อประหยัดแบต
-    super.dispose();
+    // 🚀 สั่งให้ BLoC เริ่มดูด GPS ตั้งแต่เข้าหน้านี้ (Clean Architecture)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<LocationBloc>().add(StartTrackingEvent());
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -57,7 +52,6 @@ class _HomeViewState extends State<_HomeView> {
   // ---------------------------------------------------------------------------
   Future<void> _checkFlashlightAvailability() async {
     try {
-      // ตรวจสอบเบื้องต้น (ใน Android ส่วนใหญ่มีอยู่แล้ว)
       setState(() {
         _hasFlashlight = true;
       });
@@ -79,81 +73,12 @@ class _HomeViewState extends State<_HomeView> {
     } on Exception catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ไม่สามารถเปิดไฟฉายได้ ⚠️')),
+          SnackBar(
+            content: const Text('ไม่สามารถเปิดไฟฉายได้ ⚠️'),
+            backgroundColor: AppColors.danger,
+          ),
         );
       }
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // 📡 GPS LOGIC (Real-time & Color Changing)
-  // ---------------------------------------------------------------------------
-  void _startGpsMonitoring() async {
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-
-    if (permission == LocationPermission.whileInUse ||
-        permission == LocationPermission.always) {
-      // ตั้งค่าให้อัปเดตถี่ๆ เพื่อให้เห็น Signal Bar ขยับ
-      const locationSettings = LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 0,
-      );
-
-      _positionStream =
-          Geolocator.getPositionStream(
-            locationSettings: locationSettings,
-          ).listen(
-            (Position? position) {
-              if (position != null) {
-                _updateSignalStrength(position.accuracy);
-              }
-            },
-            onError: (e) {
-              if (mounted) {
-                setState(() {
-                  _gpsSignalBars = 0;
-                  _gpsStatusText = "No GPS";
-                  _signalColor = Colors.red;
-                });
-              }
-            },
-          );
-    }
-  }
-
-  // คำนวณสีและขีดสัญญาณตามความแม่นยำ (Accuracy)
-  void _updateSignalStrength(double accuracyInMeters) {
-    int bars;
-    String status;
-    Color color;
-
-    if (accuracyInMeters <= 10) {
-      bars = 4;
-      status = "GPS: Strong";
-      color = const Color(0xFF11D452); // 🟢 Strong (Primary Green)
-    } else if (accuracyInMeters <= 25) {
-      bars = 3;
-      status = "GPS: Good";
-      color = const Color(0xFF66BB6A); // 🍃 Good (Soft Green)
-    } else if (accuracyInMeters <= 50) {
-      bars = 2;
-      status = "GPS: Fair";
-      color = const Color(0xFFFFB300); // 🟡 Fair (Amber)
-    } else {
-      bars = 1;
-      status = "GPS: Weak";
-      color = const Color(0xFFE53935); // 🔴 Weak (Red)
-    }
-
-    if (mounted) {
-      setState(() {
-        _gpsSignalBars = bars;
-        _gpsStatusText = status;
-        _signalColor = color;
-      });
     }
   }
 
@@ -162,367 +87,440 @@ class _HomeViewState extends State<_HomeView> {
   // ---------------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F6),
+    // 🟢 ประกาศเรียกใช้งาน TextTheme จากส่วนกลาง
+    final textTheme = Theme.of(context).textTheme;
 
-      // === APP BAR ===
-      appBar: AppBar(
-        toolbarHeight: 90,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF0F3923), Color(0xFF1B5E3C)],
+    return Scaffold(
+      backgroundColor: (Colors.white),
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          // === CLEAN APP BAR ===
+          SliverAppBar(
+            expandedHeight: 100.0,
+            floating: false,
+            pinned: true,
+            backgroundColor: AppColors.primary,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(1.0),
+              child: Container(color: Colors.transparent, height: 1.0),
             ),
-          ),
-        ),
-        title: Padding(
-          padding: const EdgeInsets.only(top: 0),
-          child: BlocBuilder<OnboardingCubit, OnboardingState>(
-            builder: (context, state) {
-              if (state is OnboardingLoaded) {
-                final user = state.profile;
-                return Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 25,
-                      backgroundColor: Colors.white24,
-                      backgroundImage: user.imagePath != null
-                          ? FileImage(File(user.imagePath!))
-                          : null,
-                      child: user.imagePath == null
-                          ? const Icon(Icons.person, color: Colors.white)
-                          : null,
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
+            flexibleSpace: FlexibleSpaceBar(
+              titlePadding: const EdgeInsets.only(
+                left: 24,
+                bottom: 15,
+                right: 24,
+              ),
+              title: BlocBuilder<OnboardingCubit, OnboardingState>(
+                builder: (context, state) {
+                  if (state is OnboardingLoaded) {
+                    final user = state.profile;
+                    return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text(
-                          'สวัสดี',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.white70,
+                        // รูปโปรไฟล์
+                        Container(
+                          margin: const EdgeInsets.only(top: 2),
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.3),
+                            ),
+                          ),
+                          child: CircleAvatar(
+                            radius: 20,
+                            backgroundColor: Colors.white.withOpacity(0.1),
+                            backgroundImage: user.imagePath != null
+                                ? FileImage(File(user.imagePath!))
+                                : null,
+                            child: user.imagePath == null
+                                ? Icon(
+                                    Icons.person_rounded,
+                                    size: 24,
+                                    color: Colors.white.withOpacity(0.7),
+                                  )
+                                : null,
                           ),
                         ),
-                        Text(
-                          user.nickname,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                        const SizedBox(width: 12),
+
+                        // ชื่อ และ Badge
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'สวัสดีนักเดินทาง',
+                                // 🟢 ดึง Style จาก Theme
+                                style: textTheme.labelSmall?.copyWith(
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              Text(
+                                user.nickname,
+                                // 🟢 ดึง Style จาก Theme
+                                style: textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 6),
+                            ],
                           ),
                         ),
                       ],
-                    ),
-                  ],
-                );
-              }
-              return const SizedBox.shrink();
-            },
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(top: 6, right: 12),
-            child: Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.settings, color: Colors.white),
-                onPressed: () {
-                  context.push('/settings');
+                    );
+                  }
+                  return const SizedBox.shrink();
                 },
               ),
             ),
           ),
-        ],
-      ),
 
-      // === BODY ===
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // 🛠️ DASHBOARD CARD (Flashlight + GPS)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
-              child: Container(
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 15,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Row(
-                    children: [
-                      // เส้น Accent สีเขียว (Signature TrailGuide)
-                      Container(
-                        width: 6,
-                        height: double.infinity,
-                        color: const Color(0xFF2E7D32),
+          // === BODY CONTENT ===
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 24),
+
+                  // 🛠️ DASHBOARD CARD (Flashlight + GPS)
+                  Container(
+                    height: 86,
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: AppColors.border,
+                        width: 1.5,
                       ),
-        
-                      // 🔦 ส่วนซ้าย: Flashlight Button
-                      Expanded(
-                        child: Material(
-                          color: Colors.transparent,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.textHigh.withOpacity(0.02),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        // 🔦 Flashlight Button
+                        Expanded(
                           child: InkWell(
-                            onTap: _hasFlashlight ? _toggleFlashlight : null,
+                            borderRadius: const BorderRadius.horizontal(
+                              left: Radius.circular(20),
+                            ),
+                            onTap: _hasFlashlight
+                                ? _toggleFlashlight
+                                : null,
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(
                                   _isFlashlightOn
-                                      ? Icons.flashlight_on
-                                      : Icons.flashlight_off,
+                                      ? Icons.flashlight_on_rounded
+                                      : Icons.flashlight_off_rounded,
                                   color: _isFlashlightOn
-                                      ? Colors.orangeAccent
-                                      : Colors.grey,
-                                  size: 26,
+                                      ? AppColors.warning
+                                      : AppColors.textLow,
+                                  size: 28,
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 6),
                                 Text(
                                   _isFlashlightOn
-                                      ? "Flashlight: ON"
-                                      : "Flashlight",
-                                  style: TextStyle(
+                                      ? "ปิดไฟฉาย"
+                                      : "เปิดไฟฉาย",
+                                  // 🟢 ดึง Style จาก Theme
+                                  style: textTheme.labelMedium?.copyWith(
                                     fontWeight: FontWeight.w600,
                                     color: _isFlashlightOn
-                                        ? Colors.black87
-                                        : Colors.grey,
-                                    fontSize: 14,
+                                        ? AppColors.warning
+                                        : AppColors.textMedium,
                                   ),
                                 ),
                               ],
                             ),
                           ),
                         ),
-                      ),
-        
-                      // เส้นคั่นกลาง
-                      Container(
-                        width: 1,
-                        height: 50,
-                        color: Colors.grey.withOpacity(0.2),
-                      ),
-        
-                      // 📡 ส่วนขวา: GPS Signal (Dynamic Color)
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                // ไอคอนเปลี่ยนสีตามตัวแปร _signalColor
-                                Icon(
-                                  Icons.satellite_alt_rounded,
-                                  color: _signalColor,
-                                  size: 26,
-                                ),
-        
-                                const SizedBox(width: 8),
-        
-                                // แท่งกราฟเปลี่ยนสีตามตัวแปร _signalColor
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    _buildSignalBar(
-                                      height: 6,
-                                      isActive: _gpsSignalBars >= 1,
-                                      activeColor: _signalColor,
-                                    ),
-                                    _buildSignalBar(
-                                      height: 10,
-                                      isActive: _gpsSignalBars >= 2,
-                                      activeColor: _signalColor,
-                                    ),
-                                    _buildSignalBar(
-                                      height: 14,
-                                      isActive: _gpsSignalBars >= 3,
-                                      activeColor: _signalColor,
-                                    ),
-                                    _buildSignalBar(
-                                      height: 18,
-                                      isActive: _gpsSignalBars >= 4,
-                                      activeColor: _signalColor,
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            // ข้อความเปลี่ยนสีตามตัวแปร _signalColor
-                            Text(
-                              _gpsStatusText,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: _signalColor,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
+
+                        // Divider
+                        Container(
+                          width: 1.5,
+                          height: 40,
+                          color: AppColors.border,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(height: 17),
-            // ส่วนปุ่มเมนูหลัก (Host / Join) แบบแนวนอน
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                // children: [
-                //   // 🟢 การ์ด Host (Green Gradient)
-                //   Expanded(
-                //     child: ActionGridCard(
-                //       title: 'Host Team',
-                //       subtitle: 'Create Group',
-                //       icon: Icons.flag, // หรือใช้ SVG
-                //       iconColor: Colors.white, // ไอคอนสีขาว
-                //       // ✨ ใส่ Gradient สีเขียว ✨
-                //       gradient: const LinearGradient(
-                //         begin: Alignment.topLeft,
-                //         end: Alignment.bottomRight,
-                //         colors: [
-                //           Color(0xFF0F3923), // เขียวเข้มมาก (เขียวป่า)
-                //           Color(0xFF1B5E3C), // เขียวเข้มอมสด
-                //         ],
-                //       ),
-                //       onTap: () => context.push('/lobby'),
-                //     ),
-                //   ),
-        
-                //   const SizedBox(width: 16),
-        
-                //   // ⚫ การ์ด Join (Dark Gradient)
-                //   Expanded(
-                //     child: ActionGridCard(
-                //       title: 'Join Team',
-                //       subtitle: 'Scan Code',
-                //       icon: Icons.qr_code_scanner,
-                //       iconColor: Colors.white, // ไอคอนสีขาว
-                //       // ✨ ใส่ Gradient สีดำเทา ✨
-                //       gradient: const LinearGradient(
-                //         begin: Alignment.topLeft,
-                //         end: Alignment.bottomRight,
-                //         colors: [
-                //           Color(0xFF232323), // ดำเทาเข้ม
-                //           Color(0xFF2E2E2E), // เทาเข้ม
-                //         ],
-                //       ),
-                //       onTap: () => context.push('/scan'),
-                //     ),
-                //   ),
-                // ],
-              ),
-            ),
-        
-            // ... (ต่อจาก Row ปุ่ม Host/Join) ...
-            const SizedBox(height: 24), // เว้นระยะห่าง
-            // หัวข้อ "Recent Hikes" + "View All"
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    "Recent Hikes",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+
+                        // 📡 GPS Signal (🔗 เชื่อมต่อกับ LocationBloc แบบ Clean Arch!)
+                        Expanded(
+                          child: BlocBuilder<LocationBloc, LocationState>(
+                            builder: (context, state) {
+                              int bars = 0;
+                              String statusText = "ค้นหาพิกัด...";
+                              Color signalColor = AppColors.textLow;
+
+                              if (state is LocationTracking) {
+                                double accuracy = state.position.accuracy;
+                                if (accuracy <= 10) {
+                                  bars = 4;
+                                  statusText = "GPS: ยอดเยี่ยม";
+                                  signalColor = AppColors.success;
+                                } else if (accuracy <= 25) {
+                                  bars = 3;
+                                  statusText = "GPS: ดี";
+                                  signalColor = AppColors.success
+                                      .withOpacity(0.8);
+                                } else if (accuracy <= 50) {
+                                  bars = 2;
+                                  statusText = "GPS: ปานกลาง";
+                                  signalColor = AppColors.warning;
+                                } else {
+                                  bars = 1;
+                                  statusText = "GPS: อ่อน";
+                                  signalColor = AppColors.danger;
+                                }
+                              } else if (state is LocationError) {
+                                bars = 0;
+                                statusText = "ไม่มีพิกัด";
+                                signalColor = AppColors.danger;
+                              }
+
+                              return Column(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.end,
+                                    children: [
+                                      Icon(
+                                        Icons.satellite_alt_rounded,
+                                        color: signalColor,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _buildSignalBar(
+                                        height: 6,
+                                        isActive: bars >= 1,
+                                        activeColor: signalColor,
+                                      ),
+                                      _buildSignalBar(
+                                        height: 10,
+                                        isActive: bars >= 2,
+                                        activeColor: signalColor,
+                                      ),
+                                      _buildSignalBar(
+                                        height: 14,
+                                        isActive: bars >= 3,
+                                        activeColor: signalColor,
+                                      ),
+                                      _buildSignalBar(
+                                        height: 18,
+                                        isActive: bars >= 4,
+                                        activeColor: signalColor,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    statusText,
+                                    // 🟢 ดึง Style จาก Theme
+                                    style: textTheme.labelMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textMedium,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  TextButton(
-                    onPressed: () {},
-                    child: const Text(
-                      "View All",
-                      style: TextStyle(
-                        color: Color(0xFF2E7D32),
-                        fontWeight: FontWeight.w600,
-                      ),
+
+                  const SizedBox(height: 40),
+
+                  // --- หัวข้อวิธีใช้งาน ---
+                  Text(
+                    "เริ่มต้นการใช้งาน",
+                    // 🟢 ดึง Style หลักจาก Theme 
+                    style: textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 📦 รวมทุก Step ไว้ในการ์ดใบเดียว
+                  Container(
+                    padding: const EdgeInsets.all(5),
+
+                    child: Column(
+                      children: [
+                        _buildStepRow(
+                          stepNumber: '1',
+                          title: 'สร้างกลุ่ม',
+                          description:
+                              'กด สร้างกลุ่ม เพื่อสร้างห้องและรอเพื่อนเข้าร่วม',
+                          iconColor: Colors.amber,
+                          svgPath: 'assets/icons/app/Crown.svg',
+                        ),
+                        _buildStepRow(
+                          stepNumber: '2',
+                          title: 'เข้าร่วมทีม',
+                          description:
+                              'กด เข้าร่วมทีม เพื่อค้นหาห้องเพื่อนที่อยู่ใกล้เคียง',
+                          iconColor: AppColors.info,
+                          svgPath: 'assets/icons/app/joinn.svg',
+                        ),
+                        _buildStepRow(
+                          stepNumber: '3',
+                          title: 'เปิดเรดาร์นำทาง',
+                          description:
+                              'ดูตำแหน่งและระยะห่างของเพื่อนแบบ Real-time',
+                          iconColor: AppColors.warning,
+                          svgPath: 'assets/icons/app/Compass.svg',
+                        ),
+                        _buildStepRow(
+                          stepNumber: '4',
+                          title: 'สถานการณ์ฉุกเฉิน',
+                          description:
+                              'กดปุ่ม ขอความช่วยเหลือ สีแดง เพื่อแจ้งเตือนพิกัดไปยังทุกคน',
+                          iconColor: AppColors.danger,
+                          isDanger: true,
+                          isLast: true,
+                          svgPath: 'assets/icons/app/hand.svg',
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
-        
-            const SizedBox(height: 8),
-        
-            // รายการการ์ด (Mock Data)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: [
-                  HikeHistoryCard(
-                    title: "Doi Chiang Dao",
-                    subtitle: "4hr 20m",
-                    date: "Nov 12",
-                    onTap: () {},
-                  ),
-                  HikeHistoryCard(
-                    title: "Mon Jam Loop",
-                    subtitle: "2hr 15m",
-                    date: "Oct 28",
-                    onTap: () {},
-                  ),
-                  HikeHistoryCard(
-                    title: "Pha Dok Siew",
-                    subtitle: "1hr 45m",
-                    date: "Oct 15",
-                    onTap: () {},
-                  ),
-                  // เพิ่มพื้นที่ว่างด้านล่างกันตกขอบ
-                  const SizedBox(height: 20),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  // 🪄 Widget สร้างแท่งสัญญาณ (Helper)
+  // 🪄 Widget สร้างแท่งสัญญาณ
   Widget _buildSignalBar({
     required double height,
     required bool isActive,
     required Color activeColor,
   }) {
     return AnimatedContainer(
-      duration: const Duration(
-        milliseconds: 300,
-      ), // ใส่ Animation ให้นุ่มนวล
+      duration: const Duration(milliseconds: 300),
       margin: const EdgeInsets.symmetric(horizontal: 1.5),
       width: 4,
       height: height,
       decoration: BoxDecoration(
-        color: isActive
-            ? activeColor
-            : Colors.grey[300], // ถ้าสัญญาณถึงใช้สีจริง ถ้าไม่ถึงใช้สีเทา
+        color: isActive ? activeColor : AppColors.border,
         borderRadius: BorderRadius.circular(2),
       ),
+    );
+  }
+
+  // 📖 🔧 เปลี่ยนการใช้ Icon ธรรมดาเป็น SVG (ดึงฟอนต์จาก Theme)
+  Widget _buildStepRow({
+    required String stepNumber,
+    required String svgPath, 
+    required String title,
+    required String description,
+    required Color iconColor,
+    bool isDanger = false,
+    bool isLast = false,
+  }) {
+    // 🟢 ประกาศเรียกใช้งาน TextTheme จากส่วนกลางใน Method นี้ด้วย
+    final textTheme = Theme.of(context).textTheme;
+
+    return Stack(
+      children: [
+        // 📏 เส้นแนวตั้ง
+        if (!isLast)
+          Positioned(
+            top: 40, // ขยับลงมาให้พอดีกับไอคอน
+            bottom: 0,
+            left: 21.25, // จัดให้ตรงกลางไอคอน (44/2 - 1.5/2)
+            child: Container(
+              width: 1.5,
+              color: AppColors.border.withOpacity(0.8),
+            ),
+          ),
+
+        // 📍 เนื้อหาทั้งหมด
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ไอคอน
+            Container(
+              width: 50, // ขยายพื้นที่กล่องไอคอนให้ใหญ่ขึ้น
+              height: 50,
+              alignment: Alignment.center, // 🟢 จัด SVG ให้อยู่กึ่งกลางกล่อง
+              child: SvgPicture.asset(
+                svgPath,
+                width: 29, // 🟢 กำหนดขนาด SVG
+                height: 29,
+                colorFilter: ColorFilter.mode(
+                  isDanger ? AppColors.danger : iconColor,
+                  BlendMode.srcIn,
+                ),
+              ),
+            ),
+            const SizedBox(
+              width: 20,
+            ), // เพิ่มระยะห่างระหว่างไอคอนกับข้อความ
+            
+            // เนื้อหา
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: isLast ? 0 : 32.0,
+                ), // เพิ่มระยะห่างด้านล่างแต่ละสเต็ป
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    
+                    const SizedBox(height: 6),
+                    Text(
+                      title,
+                      // 🟢 ดึง Style จาก Theme
+                      style: textTheme.titleMedium?.copyWith(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: isDanger
+                            ? AppColors.danger
+                            : AppColors.textHigh,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      description,
+                      // 🟢 ดึง Style จาก Theme
+                      style: textTheme.bodyMedium?.copyWith(
+                        fontSize: 13.7,
+                        color: isDanger
+                            ? AppColors.danger.withOpacity(0.8)
+                            : AppColors.textMedium,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

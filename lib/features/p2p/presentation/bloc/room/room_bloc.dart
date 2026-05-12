@@ -38,6 +38,7 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
 
   /// 🆕 Host Name (เก็บไว้ใช้)
   String _hostName = '';
+  String get hostName => _hostName;
 
   /// 🆕 Host Image Base64
   String? _hostImageBase64;
@@ -82,13 +83,23 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     _deviceId = 'device_${DateTime.now().millisecondsSinceEpoch}';
 
     // ใส่ไว้ใน constructor ของ RoomBloc
-    on<OnSOSReceivedEvent>((event, emit) {
+    on<OnSOSReceivedEvent>((event, emit) async {
       // เมื่อรับคลื่น SOS มา ให้เปลี่ยน State ทันที!
       emit(RoomEmergencyState(
         senderId: event.senderName, 
         latitude: 0, 
-        longitude: 0
+        longitude: 0,
       ));
+
+      // 🔧 Bug #2 Fix: กลับ State เป็น Tracking เพื่อให้เรดาร์ทำงานต่อได้
+      await Future.delayed(const Duration(seconds: 1));
+      emit(
+        RoomTrackingUpdated(
+          members: isHost
+              ? List.from(_connectedMembers)
+              : List.from(_allMembersForMember),
+        ),
+      );
     });
   }
 
@@ -147,22 +158,21 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
     Emitter<RoomState> emit,
   ) async {
     try {
-      // 1. เพื่อความรวดเร็วสุดๆ ให้ส่งเป็น String แบบเดียวกับ LOC: (พิกัด)
-      // โครงสร้าง "SOS:[ชื่อคนส่ง],[lat],[lng]"
+      // 🔧 Fix: ใช้ '|' เป็น separator แทน ',' เพื่อป้องกันชื่อที่มี comma
       final sosString =
-          "SOS:$_memberName,${event.latitude},${event.longitude}";
+          "SOS:$_memberName|${event.latitude}|${event.longitude}";
 
-      // 2. กระจายสัญญาณให้ทุกคน
-      await _broadcastToAllMembersRaw(sosString);
+      if (isHost) {
+        // Host: ส่งตรงถึง Member ทุกคนได้เลย
+        await _broadcastToAllMembersRaw(sosString);
+      } else if (isMember && _hostPeerId != null) {
+        // 🔧 Member Fix: ส่งไปที่ Host ก่อน แล้ว Host จะกระจายต่อให้
+        // (เหมือน LOC: ที่ Member ส่งผ่าน Host เสมอ)
+        await _repository.sendPayload(_hostPeerId!, sosString);
+      }
 
-      // 3. ทำให้หน้าจอตัวเองแดงด้วย (เผื่อเพื่อนเดินมาดูเครื่องเรา)
-      emit(
-        RoomEmergencyState(
-          senderId: "คุณ ($_memberName)",
-          latitude: event.latitude,
-          longitude: event.longitude,
-        ),
-      );
+      // ✅ ตัวเองไม่ต้องขึ้นหน้าจอแดง (คนกดรู้อยู่แล้วว่ากด SOS)
+      // UI จะแสดง SnackBar ยืนยันจาก radar_page.dart แทน
     } catch (e) {
       print("SOS ส่งไม่สำเร็จ: $e");
     }
@@ -218,7 +228,7 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
 
   void _checkConnections() {
     final now = DateTime.now();
-    final timeout = const Duration(seconds: 5);
+    final timeout = const Duration(seconds: 30); // 🔧 เพิ่มจาก 5s เป็น 30s (ping ส่งทุก 10s รอให้พลาด 3 รอบก่อนตัดสิน)
 
     if (isHost) {
       final disconnectedMembers = <String>[];
@@ -752,6 +762,9 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
         ),
       );
 
+      // 📝 เก็บชื่อ Host ไว้ใช้บันทึกประวัติทริป (ฝั่ง Member)
+      _hostName = message.senderName;
+
       emit(
         RoomJoined(
           roomId: message.roomId ?? '',
@@ -821,7 +834,8 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
   // MEMBER: Handle Member Left Notification
   // ============================================================
 
-  void _handleMemberLeftNotification(
+  // 🔧 Bug #8 Fix: เปลี่ยนจาก void เป็น Future<void> เพื่อรองรับ async/await อย่างถูกต้อง
+  Future<void> _handleMemberLeftNotification(
     RoomMessage message,
     Emitter<RoomState> emit,
   ) async {
@@ -891,12 +905,12 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
   // ============================================================
   // Internal Events (จัดการเมื่อสัญญาณหลุด)
   // ============================================================
+  // 🔧 Bug #1 Fix: แยก else if (isMember) ออกจาก if (isHost) เพื่อให้ Member ตรวจจับ Host หลุดได้
   Future<void> _onPeerDisconnected(
     PeerDisconnectedEvent event,
     Emitter<RoomState> emit,
   ) async {
     _lastPingTime.remove(event.peerId);
-    //final currentState = state;
     bool isTracking = _heartbeatTimer != null && _heartbeatTimer!.isActive;
 
     if (isHost) {
@@ -938,23 +952,23 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
             await _broadcastToAllMembers(leftNotification);
           }
         } catch (_) {}
-      } else if (isMember) {
-        // สำหรับ Member ถ้า Host หลุด -> วงแตก
-        if (event.peerId == _hostPeerId) {
-          _stopKeepAlive();
-          _heartbeatTimer?.cancel();
-          try {
-            if (_hostPeerId != null) {
-              await _repository.disconnectFromPeer(_hostPeerId!);
-            }
-            await _repository.stopAll();
-          } catch (_) {}
+      }
+    } else if (isMember) {
+      // สำหรับ Member ถ้า Host หลุด -> วงแตก
+      if (event.peerId == _hostPeerId) {
+        _stopKeepAlive();
+        _heartbeatTimer?.cancel();
+        try {
+          if (_hostPeerId != null) {
+            await _repository.disconnectFromPeer(_hostPeerId!);
+          }
+          await _repository.stopAll();
+        } catch (_) {}
 
-          _hostPeerId = null;
-          _currentRole = RoomRole.none;
-          _allMembersForMember.clear();
-          emit(const RoomClosedByHost(reason: 'Lost connection to host.'));
-        }
+        _hostPeerId = null;
+        _currentRole = RoomRole.none;
+        _allMembersForMember.clear();
+        emit(const RoomClosedByHost(reason: 'Lost connection to host.'));
       }
     }
     // ============================================================
@@ -1008,10 +1022,18 @@ class RoomBloc extends Bloc<RoomEvent, RoomState> {
       }
 
       // 🚨 🆕 ดักจับสัญญาณฉุกเฉิน (SOS) ที่เพื่อนส่งมา! 🚨
+      // 🔧 Bug #3 Fix: ใช้ '|' เป็น separator แทน ',' เพื่อรองรับชื่อที่มี comma
       if (rawString.startsWith("SOS:")) {
-        final parts = rawString.split(',');
+        final content = rawString.substring(4); // ตัดคำว่า "SOS:" ออก
+        final parts = content.split('|');
         if (parts.length == 3) {
-          final senderName = parts[0].substring(4); // ตัดคำว่า "SOS:" ออก
+          final senderName = parts[0];
+
+          // 🔧 SOS Relay Fix: ถ้าเราเป็น Host ที่ได้รับ SOS จาก Member
+          // ต้องกระจายต่อให้ Member คนอื่นๆ ด้วย (ไม่งั้นเฉพาะ Host ที่เห็น)
+          if (isHost) {
+            _broadcastToAllMembersRaw(rawString, excludePeerId: fromPeerId);
+          }
 
           // โยนเข้า Event เพื่อให้ BLoC เปลี่ยน State หน้าจอแดงทันที
           add(OnSOSReceivedEvent(senderName: senderName));

@@ -228,4 +228,8 @@ class RoomEmergencyState extends RoomState {
     required this.latitude,
     required this.longitude,
   });
+
+  // 🔧 Bug #2 Fix: เพิ่ม props เพื่อให้ Equatable เปรียบเทียบได้ถูกต้อง
+  @override
+  List<Object?> get props => [senderId, latitude, longitude];
 }
