@@ -64,6 +64,7 @@ dependencies:
   torch_light: ^1.1.0
   flutter_map: ^8.3.0
   latlong2: ^0.9.1
+  vibration: ^3.1.8
 
 dev_dependencies:
   flutter_test:
