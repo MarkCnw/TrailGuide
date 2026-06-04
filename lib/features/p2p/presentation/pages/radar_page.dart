@@ -41,8 +41,9 @@ class _RadarPageState extends State<RadarPage> {
 
   // 🧭 Compass Smoothing: ใช้ low-pass filter เพื่อลดการกระตุกของเข็มทิศ
   double _smoothedHeading = 0.0;
+  bool _isFirstCompassEvent = true; // เข็มทิศตรงทันทีตอนเปิดหน้าจอ
   static const double _headingSmoothingFactor =
-      0.15; // ค่ายิ่งน้อย = ยิ่ง smooth (แต่ช้า)
+      0.25; // เพิ่มจาก 0.15 → 0.25 ให้ตอบสนองเร็วขึ้น (ลดอาการหน่วง)
 
   // 🖼️ Image Cache: เก็บรูปที่แปลงแล้วไว้ จะได้ไม่ต้องแปลงใหม่ทุกเฟรม (แก้ปัญหารูปกระพริบเวลาเข็มทิศหมุน)
   final Map<String, Uint8List?> _imageCache = {};
@@ -56,7 +57,6 @@ class _RadarPageState extends State<RadarPage> {
   final List<double> _routeLatitudes = [];
   final List<double> _routeLongitudes = [];
 
-  
   @override
   void initState() {
     super.initState();
@@ -76,9 +76,13 @@ class _RadarPageState extends State<RadarPage> {
       final roomBloc = context.read<RoomBloc>();
       _tripHostName = roomBloc.hostName;
       _tripMemberNames = currentState.members.map((m) => m.name).toList();
-      print('📝 [TripHistory] initState จับ state ได้ → Host: $_tripHostName, Members: $_tripMemberNames, StartTime: $_tripStartTime');
+      print(
+        '📝 [TripHistory] initState จับ state ได้ → Host: $_tripHostName, Members: $_tripMemberNames, StartTime: $_tripStartTime',
+      );
     } else {
-      print('📝 [TripHistory] initState → state ปัจจุบันคือ: ${currentState.runtimeType} (ยังไม่ใช่ RoomTripStarted)');
+      print(
+        '📝 [TripHistory] initState → state ปัจจุบันคือ: ${currentState.runtimeType} (ยังไม่ใช่ RoomTripStarted)',
+      );
     }
   }
 
@@ -88,7 +92,9 @@ class _RadarPageState extends State<RadarPage> {
     double myLat,
     double myLng,
   ) {
-    final textTheme = Theme.of(context).textTheme; // 🟢 ดึง Theme สำหรับ SnackBar
+    final textTheme = Theme.of(
+      context,
+    ).textTheme; // 🟢 ดึง Theme สำหรับ SnackBar
 
     for (var member in members) {
       if (member.latitude != null &&
@@ -158,11 +164,11 @@ class _RadarPageState extends State<RadarPage> {
   }
 
   /// 📝 บันทึกประวัติทริปลง Isar เมื่อทริปจบ
-void _saveTripHistory(BuildContext context) {
+  void _saveTripHistory(BuildContext context) {
     if (_tripStartTime == null) return;
 
     final trip = TripHistoryEntity(
-      id: 0, 
+      id: 0,
       hostName: _tripHostName,
       memberNames: _tripMemberNames,
       startedAt: _tripStartTime!,
@@ -173,13 +179,14 @@ void _saveTripHistory(BuildContext context) {
     );
 
     context.read<HistoryCubit>().saveTripRecord(trip);
-    
+
     // 🟢 ล้างค่าเส้นทางเก่าทิ้งเผื่อเริ่มทริปใหม่
     _tripStartTime = null;
     _totalDistance = 0.0;
     _routeLatitudes.clear();
     _routeLongitudes.clear();
   }
+
   @override
   void dispose() {
     // 🌟 สั่งหยุด GPS ผ่านตัวแปรตรงๆ ไม่มี Future.microtask หรือ context แล้ว
@@ -200,7 +207,9 @@ void _saveTripHistory(BuildContext context) {
         ),
         title: Text(
           'สิ้นสุดการเดินทาง',
-          style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          style: textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
         ),
         content: Text(
           'คุณแน่ใจหรือไม่ว่าต้องการหยุดการติดตามและออกจากกลุ่ม?',
@@ -211,7 +220,9 @@ void _saveTripHistory(BuildContext context) {
             onPressed: () => Navigator.pop(dialogContext),
             child: Text(
               'ยกเลิก',
-              style: textTheme.labelLarge?.copyWith(color: Colors.grey[600]),
+              style: textTheme.labelLarge?.copyWith(
+                color: Colors.grey[600],
+              ),
             ),
           ),
           ElevatedButton(
@@ -238,7 +249,7 @@ void _saveTripHistory(BuildContext context) {
             child: Text(
               'จบทริป',
               style: textTheme.labelLarge?.copyWith(
-                color: Colors.white, 
+                color: Colors.white,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -277,7 +288,7 @@ void _saveTripHistory(BuildContext context) {
                 backgroundColor: Colors.red[600],
               ),
             );
-            context.go('/home');
+            context.go('/radar');
           } else if (roomState is RoomLeft) {
             _saveTripHistory(context);
             ScaffoldMessenger.of(context).showSnackBar(
@@ -286,7 +297,7 @@ void _saveTripHistory(BuildContext context) {
                 backgroundColor: Colors.orange[600],
               ),
             );
-            context.go('/home');
+            context.go('/radar');
           } else if (roomState is RoomTripStarted) {
             _tripStartTime = DateTime.now();
             final roomBloc = context.read<RoomBloc>();
@@ -327,7 +338,9 @@ void _saveTripHistory(BuildContext context) {
             // 📳 🟢 สั่งสั่นแบบ SOS (สั่น 1 วิ, หยุด 0.5 วิ, สั่น 1 วิ... วน 3 รอบ)
             Vibration.hasVibrator().then((hasVibrator) {
               if (hasVibrator == true) {
-                Vibration.vibrate(pattern: [0, 1000, 500, 1000, 500, 1000]); 
+                Vibration.vibrate(
+                  pattern: [0, 1000, 500, 1000, 500, 1000],
+                );
               }
             });
             showDialog(
@@ -357,7 +370,9 @@ void _saveTripHistory(BuildContext context) {
                 ),
                 content: Text(
                   '${roomState.senderId} ต้องการความช่วยเหลือด่วน!\nโปรดเช็กพิกัดบนเรดาร์และรีบไปหาทันที!',
-                  style: textTheme.bodyLarge?.copyWith(color: Colors.white),
+                  style: textTheme.bodyLarge?.copyWith(
+                    color: Colors.white,
+                  ),
                 ),
                 actions: [
                   ElevatedButton(
@@ -368,7 +383,9 @@ void _saveTripHistory(BuildContext context) {
                     onPressed: () => Navigator.pop(context),
                     child: Text(
                       'รับทราบ',
-                      style: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
+                      style: textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -401,8 +418,8 @@ void _saveTripHistory(BuildContext context) {
 
                     // 🖼️ ภาพประกอบตรงกลาง
                     SvgPicture.asset(
-                      'assets/Illustration/vf.svg', 
-                      width: 220, 
+                      'assets/Illustration/vf.svg',
+                      width: 220,
                       height: 220,
                     ),
                     const SizedBox(height: 40),
@@ -419,16 +436,15 @@ void _saveTripHistory(BuildContext context) {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      
                       'สร้างห้องเพื่อเป็นผู้นำทาง หรือเข้าร่วม\nเรดาร์ของเพื่อนเพื่อเริ่มการเดินทาง',
                       textAlign: TextAlign.center,
                       style: textTheme.bodyMedium?.copyWith(
                         color: AppColors.textMedium,
                         height: 1.5,
-                        fontSize: 15
+                        fontSize: 15,
                       ),
                     ),
-                    
+
                     const SizedBox(height: 48),
 
                     // 🟢 เปลี่ยนปุ่มเป็นแนวนอนซ้าย-ขวา
@@ -440,13 +456,18 @@ void _saveTripHistory(BuildContext context) {
                             onTap: () => context.go('/lobby'),
                             borderRadius: BorderRadius.circular(24),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 24,
+                                horizontal: 16,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppColors.primary,
                                 borderRadius: BorderRadius.circular(24),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.primary.withOpacity(0.3),
+                                    color: AppColors.primary.withOpacity(
+                                      0.3,
+                                    ),
                                     blurRadius: 16,
                                     offset: const Offset(0, 6),
                                   ),
@@ -461,13 +482,19 @@ void _saveTripHistory(BuildContext context) {
                                       'assets/icons/app/Crown1.svg',
                                       width: 40,
                                       height: 40,
-                                      colorFilter: const ColorFilter.mode(Colors.amber, BlendMode.srcIn),
+                                      colorFilter: const ColorFilter.mode(
+                                        Colors.amber,
+                                        BlendMode.srcIn,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 16),
                                   Text(
                                     'สร้างกลุ่ม',
-                                    style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
+                                    style: textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
                                     textAlign: TextAlign.center,
                                   ),
                                 ],
@@ -475,20 +502,27 @@ void _saveTripHistory(BuildContext context) {
                             ),
                           ),
                         ),
-                        
-                        const SizedBox(width: 16), // ระยะห่างระหว่าง 2 ปุ่ม
 
+                        const SizedBox(
+                          width: 16,
+                        ), // ระยะห่างระหว่าง 2 ปุ่ม
                         // 🔘 ปุ่มขวา: เข้าร่วมกลุ่ม (Join Room)
                         Expanded(
                           child: InkWell(
                             onTap: () => context.go('/scan'),
                             borderRadius: BorderRadius.circular(24),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 24,
+                                horizontal: 16,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppColors.surface,
                                 borderRadius: BorderRadius.circular(24),
-                                border: Border.all(color: AppColors.border, width: 1.5),
+                                border: Border.all(
+                                  color: AppColors.border,
+                                  width: 1.5,
+                                ),
                                 boxShadow: [
                                   BoxShadow(
                                     color: Colors.black.withOpacity(0.03),
@@ -506,13 +540,19 @@ void _saveTripHistory(BuildContext context) {
                                       'assets/icons/app/joinnn.svg',
                                       width: 40,
                                       height: 40,
-                                      colorFilter: const ColorFilter.mode(Colors.blue, BlendMode.srcIn),
+                                      colorFilter: const ColorFilter.mode(
+                                        Colors.blue,
+                                        BlendMode.srcIn,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 16),
                                   Text(
                                     'เข้าร่วมกลุ่ม',
-                                    style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: AppColors.textHigh),
+                                    style: textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textHigh,
+                                    ),
                                     textAlign: TextAlign.center,
                                   ),
                                 ],
@@ -523,12 +563,14 @@ void _saveTripHistory(BuildContext context) {
                       ],
                     ),
 
-                    const Spacer(flex: 2), // ดันให้องค์ประกอบอยู่ตรงกลางพอดี
+                    const Spacer(
+                      flex: 2,
+                    ), // ดันให้องค์ประกอบอยู่ตรงกลางพอดี
                   ],
                 ),
               ),
             ),
-          ); 
+          );
         },
       ),
     );
@@ -674,7 +716,12 @@ void _saveTripHistory(BuildContext context) {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
-        child: SvgPicture.asset('assets/icons/app/hand.svg',width: 40,height: 40,color: Colors.white,)
+        child: SvgPicture.asset(
+          'assets/icons/app/hand.svg',
+          width: 40,
+          height: 40,
+          color: Colors.white,
+        ),
       ),
 
       body: BlocListener<LocationBloc, LocationState>(
@@ -704,10 +751,15 @@ void _saveTripHistory(BuildContext context) {
                 // ถอยไปดูจุดล่าสุดที่เราเดินผ่านมา
                 final lastLat = _routeLatitudes.last;
                 final lastLng = _routeLongitudes.last;
-                
+
                 // คำนวณว่าพิกัดใหม่ ขยับจากจุดเดิมกี่เมตร
-                final dist = LocationCalculator.calculateDistance(lastLat, lastLng, lat, lng);
-                
+                final dist = LocationCalculator.calculateDistance(
+                  lastLat,
+                  lastLng,
+                  lat,
+                  lng,
+                );
+
                 // 💡 กรอง Noise: ถ้าเดินขยับเกิน 2 เมตร ถึงจะนับว่าเดินจริง (ป้องกัน GPS แกว่งตอนยืนเฉยๆ)
                 if (dist > 2.0) {
                   _routeLatitudes.add(lat);
@@ -722,21 +774,39 @@ void _saveTripHistory(BuildContext context) {
           builder: (context, locationState) {
             double? myLat;
             double? myLng;
+            double myGpsHeading = 0.0; // ทิศทางจาก GPS (แม่นยำสุดตอนเดิน)
+            double mySpeed = 0.0; // ความเร็วจาก GPS
 
             if (locationState is LocationTracking) {
               myLat = locationState.position.latitude;
               myLng = locationState.position.longitude;
+              myGpsHeading = locationState.position.heading; // ดึงทิศทางจาก GPS
+              mySpeed = locationState.position.speed; // ดึงความเร็วจาก GPS
             }
 
             return StreamBuilder<CompassEvent>(
               stream: FlutterCompass.events,
               builder: (context, snapshot) {
-                final rawHeading = snapshot.data?.heading ?? 0.0;
-                _smoothedHeading = _smoothAngle(
-                  _smoothedHeading,
-                  rawHeading,
-                  _headingSmoothingFactor,
-                );
+                // 🌟 Smart Heading (เทคนิคเดียวกับ Google Maps / Strava)
+                // ถ้ากำลังเดินอยู่ (ความเร็ว > 0.5 m/s) → ใช้ทิศจาก GPS (แม่นยำมาก)
+                // ถ้ายืนนิ่งๆ → ใช้เข็มทิศแม่เหล็ก (Magnetic Compass)
+                double rawHeading = snapshot.data?.heading ?? 0.0;
+                if (mySpeed > 0.5 && myGpsHeading >= 0.0) {
+                  rawHeading = myGpsHeading;
+                }
+
+                // ถ้าเพิ่งเปิดหน้าเรดาร์ → ชี้ไปทิศจริงทันทีไม่ต้องรอหมุนช้าๆ
+                if (_isFirstCompassEvent && (snapshot.hasData || mySpeed > 0.5)) {
+                  _smoothedHeading = rawHeading;
+                  _isFirstCompassEvent = false;
+                } else {
+                  _smoothedHeading = _smoothAngle(
+                    _smoothedHeading,
+                    rawHeading,
+                    _headingSmoothingFactor,
+                  );
+                }
+
                 final double myHeading = _smoothedHeading;
 
                 return Column(
@@ -789,7 +859,9 @@ void _saveTripHistory(BuildContext context) {
                                   ),
                                   decoration: BoxDecoration(
                                     color: Colors.green[100],
-                                    borderRadius: BorderRadius.circular(20),
+                                    borderRadius: BorderRadius.circular(
+                                      20,
+                                    ),
                                   ),
                                   child: Text(
                                     '${tripMembers.length + 1} เชื่อมต่อ',
@@ -940,10 +1012,7 @@ void _saveTripHistory(BuildContext context) {
               decoration: BoxDecoration(
                 color: Colors.blue[600],
                 shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white,
-                  width: 2,
-                ),
+                border: Border.all(color: Colors.white, width: 2),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.blue[600]!.withOpacity(0.6),
@@ -979,10 +1048,7 @@ void _saveTripHistory(BuildContext context) {
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
-          border: Border.all(
-            color: Colors.white,
-            width: 2.5,
-          ),
+          border: Border.all(color: Colors.white, width: 2.5),
           boxShadow: [
             BoxShadow(
               color: color.withOpacity(0.6),
@@ -1004,7 +1070,7 @@ void _saveTripHistory(BuildContext context) {
     );
   }
 
-  // 🟢 ฟังก์ชันสร้างการ์ดรายชื่อเพื่อน 
+  // 🟢 ฟังก์ชันสร้างการ์ดรายชื่อเพื่อน
   Widget _buildMemberCard(
     BuildContext context,
     PeerEntity member,
@@ -1039,14 +1105,18 @@ void _saveTripHistory(BuildContext context) {
         member.longitude!,
       );
 
-      if (distanceInMeters >= 1000) {
+      // 🟢 1. ย้ายมาเช็กก่อนว่าอยู่ใกล้ไหม (น้อยกว่า 10 เมตร)
+      isTooClose = distanceInMeters < 30.0;
+
+      // 🟢 2. เพิ่มเงื่อนไขเปลี่ยนข้อความตรงนี้
+      if (isTooClose) {
+        distanceText = 'อยู่ใกล้คุณ';
+      } else if (distanceInMeters >= 1000) {
         distanceText =
             '${(distanceInMeters / 1000).toStringAsFixed(1)} km';
       } else {
         distanceText = '${distanceInMeters.toStringAsFixed(0)} m';
       }
-
-      isTooClose = distanceInMeters < 10.0;
 
       final bearingInDegrees = LocationCalculator.calculateBearing(
         myLat,
@@ -1118,7 +1188,10 @@ void _saveTripHistory(BuildContext context) {
                   children: [
                     Icon(
                       canCalculate
-                          ? Icons.social_distance_rounded
+                          ? (isTooClose
+                                ? Icons.my_location_rounded
+                                : Icons
+                                      .social_distance_rounded) // 🟢 3. เปลี่ยนไอคอนถ้าอยู่ใกล้
                           : Icons.location_searching_rounded,
                       size: 14,
                       color: canCalculate
@@ -1130,8 +1203,11 @@ void _saveTripHistory(BuildContext context) {
                       child: Text(
                         distanceText,
                         style: textTheme.bodySmall?.copyWith(
+                          // 🟢 4. ถ้าอยู่ใกล้ให้ข้อความเป็นสีเขียวเน้นๆ
                           color: canCalculate
-                              ? Colors.grey[800]
+                              ? (isTooClose
+                                    ? Colors.green[700]
+                                    : Colors.grey[800])
                               : Colors.grey[500],
                           fontWeight: canCalculate
                               ? FontWeight.w600
@@ -1156,9 +1232,11 @@ void _saveTripHistory(BuildContext context) {
               angle: (canCalculate && !isTooClose) ? bearingAngle : 0.0,
               child: Icon(
                 isTooClose
-                    ? Icons.adjust_rounded
+                    ? Icons
+                          .adjust_rounded // วงกลมเป้าหมายเวลาอยู่ใกล้
                     : (canCalculate
-                          ? Icons.navigation_rounded
+                          ? Icons
+                                .arrow_upward_rounded // 🟢 ใช้ลูกศรชี้ตรงตามที่แก้ไว้ล่าสุด
                           : Icons.location_searching_rounded),
                 color: canCalculate ? Colors.green[600] : Colors.grey[400],
                 size: 20,
@@ -1169,5 +1247,4 @@ void _saveTripHistory(BuildContext context) {
       ),
     );
   }
-
 }

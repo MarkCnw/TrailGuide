@@ -174,7 +174,7 @@ class _LobbyPageState extends State<LobbyPage> {
         } else if (state is RoomTripStarted) {
           context.go('/radar');
         } else if (state is RoomClosedByHost) {
-          context.go('/home'); // หัวหน้าปิดห้อง กลับโฮม
+          context.go('/radar'); // หัวหน้าปิดห้อง กลับโฮม
         } else if (state is RoomLeft) {
           context.go('/radar'); // ลูกทีมกดออก กลับไปหน้าสแกน(เรดาร์)
         } else if (state is RoomError) {
@@ -202,6 +202,24 @@ class _LobbyPageState extends State<LobbyPage> {
             ),
           );
         }
+      },
+      // 🟢 อัปเกรดตรรกะแช่แข็งหน้าจอ (UI Freeze) ดักทุกจังหวะตอนออกห้อง
+      buildWhen: (previous, current) {
+        // 1. ถ้าสถานะเป็นปิดห้อง หรือออกจากห้อง ห้ามวาดจอใหม่
+        if (current is RoomClosedByHost || current is RoomLeft) {
+          return false;
+        }
+        
+        // 2. 🚨 ดักจังหวะหน่วงเวลา 500ms ของ BLoC
+        if (current is RoomLoading) {
+          // ถ้าสถานะเป็น Loading ในขณะที่ตัวเรายังอยู่ในห้อง (isInRoom) 
+          // แปลว่ากำลังโหลดเพื่อ "ออก/ปิดห้อง" -> ให้แช่แข็งหน้าล็อบบี้ไว้เลย
+          final isCurrentlyInRoom = context.read<RoomBloc>().isInRoom;
+          if (isCurrentlyInRoom) return false; 
+        }
+
+        // สถานะอื่นๆ ปล่อยให้วาดหน้าจอตามปกติ
+        return true;
       },
       builder: (context, state) {
         // 🟢 เช็กว่าอยู่ในสถานะที่เข้าห้องแล้ว (ทั้งแบบ Host และ Member)

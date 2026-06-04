@@ -2,6 +2,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:material_symbols_icons/material_symbols_icons.dart';
+import 'package:trail_guide/features/history/presentation/cubit/history_cubit.dart';
+import 'package:trail_guide/features/history/presentation/cubit/history_state.dart';
+import 'package:trail_guide/features/profile/presentation/pages/about_page.dart';
+import 'package:trail_guide/features/profile/presentation/pages/contact_page.dart';
+import 'package:trail_guide/features/profile/presentation/pages/credits_page.dart';
+import 'package:trail_guide/features/profile/presentation/pages/privacy_page.dart';
 // 🟢 เอา import 'package:google_fonts/google_fonts.dart'; ออกไปแล้ว ดึงจาก Theme แทน
 
 // Import ของในโปรเจกต์
@@ -13,13 +20,8 @@ class ProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 🟢 ใช้ .value เพื่อดึง Cubit ตัวเดียวกันกับที่ main.dart provide ไว้
-    // (ไม่สร้าง BlocProvider ใหม่ทับ เพื่อให้ HomePage เห็นข้อมูลอัปเดตด้วย)
-    final cubit = context.read<OnboardingCubit>()..loadUserProfile();
-    return BlocProvider.value(
-      value: cubit,
-      child: const _ProfileView(),
-    );
+    // 🟢 ลบ BlocProvider ออกทั้งหมด เพราะเรามี OnboardingCubit อยู่ที่ main.dart แล้ว
+    return const _ProfileView();
   }
 }
 
@@ -41,6 +43,12 @@ class _ProfileViewState extends State<_ProfileView> {
   void initState() {
     super.initState();
     _nameController = TextEditingController();
+
+    // 🟢 1. สั่งให้ดึงข้อมูลโปรไฟล์จาก Local Storage (ผ่าน Cubit ตัวหลักของแอป)
+    context.read<OnboardingCubit>().loadUserProfile();
+    context.read<HistoryCubit>().getAllTrips();
+
+    // 🟢 2. รอให้ Widget วาดเสร็จ 1 เฟรม แล้วค่อยดึง State มายัดใส่กล่องข้อความ
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final state = context.read<OnboardingCubit>().state;
       if (state is OnboardingLoaded) {
@@ -86,7 +94,10 @@ class _ProfileViewState extends State<_ProfileView> {
               const SizedBox(width: 8),
               Text(
                 'บันทึกข้อมูลสำเร็จ',
-                style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: Colors.white),
+                style: textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
             ],
           ),
@@ -110,13 +121,33 @@ class _ProfileViewState extends State<_ProfileView> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(title, style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: AppColors.textHigh)),
-        content: Text(content, style: textTheme.bodyMedium?.copyWith(color: AppColors.textMedium, height: 1.5)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Text(
+          title,
+          style: textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: AppColors.textHigh,
+          ),
+        ),
+        content: Text(
+          content,
+          style: textTheme.bodyMedium?.copyWith(
+            color: AppColors.textMedium,
+            height: 1.5,
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text("ตกลง", style: textTheme.labelLarge?.copyWith(color: AppColors.primary, fontWeight: FontWeight.bold)),
+            child: Text(
+              "ตกลง",
+              style: textTheme.labelLarge?.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -230,11 +261,15 @@ class _ProfileViewState extends State<_ProfileView> {
                                         vertical: 14,
                                       ),
                                   border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(16),
+                                    borderRadius: BorderRadius.circular(
+                                      16,
+                                    ),
                                     borderSide: BorderSide.none,
                                   ),
                                   focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(16),
+                                    borderRadius: BorderRadius.circular(
+                                      16,
+                                    ),
                                     borderSide: const BorderSide(
                                       color: AppColors.primary,
                                       width: 2,
@@ -249,18 +284,19 @@ class _ProfileViewState extends State<_ProfileView> {
                                     _nameController.text.isEmpty
                                         ? "ผู้ใช้งานใหม่"
                                         : _nameController.text,
-                                    style: textTheme.headlineSmall?.copyWith(
-                                      fontWeight: FontWeight.w900,
-                                      color: AppColors.textHigh,
-                                      letterSpacing: -0.5,
-                                    ),
+                                    style: textTheme.headlineSmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w900,
+                                          color: AppColors.textHigh,
+                                          letterSpacing: -0.5,
+                                        ),
                                   ),
                                   const SizedBox(height: 16),
 
                                   const Divider(
                                     color: AppColors.border,
-                                    thickness: 1, 
-                                    height: 20, 
+                                    thickness: 1,
+                                    height: 20,
                                   ),
                                 ],
                               ),
@@ -269,26 +305,70 @@ class _ProfileViewState extends State<_ProfileView> {
 
                             // --- ส่วนสถิติ 2 คอลัมน์ (แสดงเฉพาะตอนไม่ได้ Edit เพื่อความคลีน) ---
                             if (!_isEditing) ...[
-                              Row(
-                                children: [
-                                  _buildMiniStat(
-                                    context: context, // 🟢 ส่ง Context
-                                    title: "ทริป",
-                                    value: "0",
-                                    icon: Icons.map_rounded,
-                                  ),
-                                  Container(
-                                    width: 1,
-                                    height: 40,
-                                    color: AppColors.border,
-                                  ), // เส้นคั่นกลาง
-                                  _buildMiniStat(
-                                    context: context, // 🟢 ส่ง Context
-                                    title: "ระยะทาง",
-                                    value: "0 km",
-                                    icon: Icons.directions_walk_rounded,
-                                  ),
-                                ],
+                              BlocBuilder<HistoryCubit, HistoryState>(
+                                builder: (context, state) {
+                                  // 1. 🏁 ตั้งค่าเริ่มต้นเตรียมไว้ก่อน
+                                  int totalTrips = 0;
+                                  double totalDistance = 0.0;
+
+                                  // 2. 🐷 ทุบกระปุก! ถ้าโหลดข้อมูลสำเร็จ ให้เอาลูป for-in มาวิ่งบวกเลขตรงนี้
+                                  if (state is HistoryLoaded) {
+                                    final trips = state.trips;
+                                    // 1. 🔢 หาจำนวนทริปทั้งหมด
+                                    totalTrips = trips.length;
+                                    // 2. 🛣️ หาระยะทางรวม (ใช้ลูป for-in เหมือนหยอดกระปุก)
+                                    totalDistance = 0.0;
+                                    for (var trip in trips) {
+                                      // ดึงค่าระยะทางของแต่ละทริปมาบวกสะสม
+                                      double distance = trip.totalDistance;
+                                      if (!distance.isNaN &&
+                                          !distance.isInfinite) {
+                                        totalDistance += distance;
+                                      }
+                                    }
+                                  }
+
+                                  String distanceValue;
+                                  String distanceUnit;
+
+                                  if (totalDistance < 1000) {
+                                    distanceValue = totalDistance
+                                        .toStringAsFixed(0);
+                                    distanceUnit = "เมตร";
+                                  } else {
+                                    distanceValue = (totalDistance / 1000)
+                                        .toStringAsFixed(2);
+                                    distanceUnit = "กม.";
+                                  }
+
+                                  // 3. 🧮 นำค่าระยะทาง (เมตร) มาจัดรูปแบบเตรียมแสดงผล
+
+                                  // 4. 🎨 คืนค่า (return) หน้าตา UI ออกไป
+                                  return Row(
+                                    children: [
+                                      _buildMiniStat(
+                                        context: context,
+                                        title: "ทริป",
+                                        value: totalTrips
+                                            .toString(), // 🟢 นำตัวแปรมาเสียบแทน "0"
+                                        icon: Icons.map_rounded,
+                                      ),
+                                      Container(
+                                        width: 1,
+                                        height: 40,
+                                        color: AppColors.border,
+                                      ),
+                                      _buildMiniStat(
+                                        context: context,
+                                        title: "ระยะทาง",
+                                        value:
+                                            "$distanceValue $distanceUnit", // 🟢 ตัวแปรสองตัวต่อกันด้วยช่องว่าง
+                                        icon:
+                                            Icons.directions_walk_rounded,
+                                      ),
+                                    ],
+                                  );
+                                },
                               ),
                               const SizedBox(height: 24),
                             ],
@@ -309,7 +389,9 @@ class _ProfileViewState extends State<_ProfileView> {
                                       ? Colors.white
                                       : AppColors.textHigh,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
+                                    borderRadius: BorderRadius.circular(
+                                      16,
+                                    ),
                                   ),
                                   elevation: 0,
                                 ),
@@ -345,7 +427,7 @@ class _ProfileViewState extends State<_ProfileView> {
                           "การตั้งค่าระบบ",
                           style: textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w800,
-                            color: AppColors.textMedium,
+                            color: AppColors.textHigh,
                           ),
                         ),
                       ),
@@ -361,14 +443,19 @@ class _ProfileViewState extends State<_ProfileView> {
                         child: Column(
                           children: [
                             _MenuTile(
-                              icon: Icons.privacy_tip_rounded,
-                              title: "Privacy Policy",
-                              iconColor: AppColors.info,
+                              icon: Symbols.shield_lock,
+                              title: "ความเป็นส่วนตัวเเละความปลอดภัย",
+                              iconColor: AppColors.textHigh,
                               isTop: true,
-                              onTap: () => _showInfoDialog(
-                                "Privacy Policy", 
-                                "แอปพลิเคชันนี้มีการเก็บข้อมูลรูปโปรไฟล์, ชื่อ และตำแหน่ง (GPS) ของคุณเพื่อใช้ในการแสดงผลบนเรดาร์ ข้อมูลถูกประมวลผลผ่านระบบออฟไลน์ P2P และไม่มีการเก็บไว้ในเซิร์ฟเวอร์สาธารณะ"
-                              ),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const PrivacyPage(),
+                                  ),
+                                );
+                              },
                             ),
                             const Divider(
                               color: AppColors.border,
@@ -376,13 +463,18 @@ class _ProfileViewState extends State<_ProfileView> {
                               indent: 64,
                             ),
                             _MenuTile(
-                              icon: Icons.email_rounded,
-                              title: "Contact Email",
-                              iconColor: AppColors.warning,
-                              onTap: () => _showInfoDialog(
-                                "Contact Email", 
-                                "หากพบปัญหาการใช้งานหรือมีข้อเสนอแนะ ติดต่อเราได้ที่:\n\nsupport.trailguide@email.com"
-                              ),
+                              icon: Symbols.mail,
+                              title: "ติดต่อเรา",
+                              iconColor: AppColors.textHigh,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const ContactPage(),
+                                  ),
+                                );
+                              },
                             ),
                             const Divider(
                               color: AppColors.border,
@@ -390,36 +482,46 @@ class _ProfileViewState extends State<_ProfileView> {
                               indent: 64,
                             ),
                             _MenuTile(
-                              icon: Icons.info_rounded,
-                              title: "About Us",
-                              iconColor: AppColors.textMedium,
-                              isBottom: true,
-                              onTap: () => _showInfoDialog(
-                                "About Us", 
-                                "TrailGuide เวอร์ชัน 1.0.0\n\nแอปพลิเคชันเรดาร์ออฟไลน์สำหรับนักเดินป่า ช่วยให้คุณไม่หลงทางและเชื่อมต่อกับเพื่อนร่วมทีมได้ตลอดเวลาแม้ไม่มีสัญญาณอินเทอร์เน็ต"
-                              ),
+                              icon: Symbols.info,
+                              title: "เกี่ยวกับเรา",
+                              iconColor: AppColors.textHigh,
+                              // 🔴 ลบ isBottom: true ออกจากตรงนี้แล้ว
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const AboutPage(),
+                                  ),
+                                );
+                              },
+                            ),
+                            const Divider(
+                              color: AppColors.border,
+                              height: 1.5,
+                              indent: 64,
+                            ),
+                            _MenuTile(
+                              icon: Symbols.copyright_sharp,
+                              title: "เครดิตและลิขสิทธิ์",
+                              iconColor: AppColors.textHigh,
+                              isBottom:
+                                  true, // 🟢 เก็บไว้แค่อันสุดท้ายอันเดียว
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const CreditsPage(),
+                                  ),
+                                );
+                              },
                             ),
                           ],
                         ),
                       ),
 
                       const SizedBox(height: 24),
-
-                      // 🚪 ปุ่ม Logout
-                      TextButton.icon(
-                        onPressed: () {}, // TODO: Logout logic
-                        icon: const Icon(
-                          Icons.logout_rounded,
-                          color: AppColors.danger,
-                        ),
-                        label: Text(
-                          "ออกจากระบบ",
-                          style: textTheme.titleMedium?.copyWith(
-                            color: AppColors.danger,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -541,9 +643,9 @@ class _ProfileImageSelector extends StatelessWidget {
   }
 }
 
-
 class _MenuTile extends StatelessWidget {
-  final IconData icon; // 🟢 โค้ดเดิมที่คุณส่งมายังเป็นแบบ Icon ปกติ ซึ่งใช้งานได้ตามปกติครับ
+  final IconData
+  icon; // 🟢 โค้ดเดิมที่คุณส่งมายังเป็นแบบ Icon ปกติ ซึ่งใช้งานได้ตามปกติครับ
   final String title;
   final Color iconColor;
   final bool isTop;
@@ -564,7 +666,7 @@ class _MenuTile extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme; // 🟢 ดึง Theme
 
     return InkWell(
-      onTap: onTap ?? () {}, 
+      onTap: onTap ?? () {},
       borderRadius: BorderRadius.vertical(
         top: Radius.circular(isTop ? 24 : 0),
         bottom: Radius.circular(isBottom ? 24 : 0),
@@ -575,8 +677,8 @@ class _MenuTile extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(10),
-              
-              child: Icon(icon, color: iconColor, size: 22),
+
+              child: Icon(icon, color: iconColor, size: 25),
             ),
             const SizedBox(width: 16),
             Expanded(

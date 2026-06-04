@@ -65,6 +65,8 @@ dependencies:
   flutter_map: ^8.3.0
   latlong2: ^0.9.1
   vibration: ^3.1.8
+  flutter_screenutil: ^5.9.3
+  material_symbols_icons: ^4.2928.1
 
 dev_dependencies:
   flutter_test:
@@ -95,6 +97,9 @@ flutter:
     - assets/icons/navigation/
     - assets/icons/app/
     - assets/Illustration/
+    - assets/logo/
+
+    
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

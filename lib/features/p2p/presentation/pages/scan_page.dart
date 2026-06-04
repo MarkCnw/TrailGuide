@@ -202,6 +202,8 @@ class _ScanPageState extends State<ScanPage> {
               backgroundColor: Colors.red[600],
             ),
           );
+          // 🟢 FIX: Reset state กลับเพื่อให้กดเข้าห้องใหม่ได้
+          context.read<RoomBloc>().add(const ResetRoomEvent());
         } else if (state is RoomFullError) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -215,6 +217,8 @@ class _ScanPageState extends State<ScanPage> {
               backgroundColor: Colors.orange[600],
             ),
           );
+          // 🟢 FIX: Reset state กลับเพื่อให้กดเข้าห้องใหม่ได้
+          context.read<RoomBloc>().add(const ResetRoomEvent());
         } else if (state is RoomError) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -222,6 +226,8 @@ class _ScanPageState extends State<ScanPage> {
               backgroundColor: Colors.red[600],
             ),
           );
+          // 🟢 FIX: Reset state กลับเพื่อให้กดเข้าห้องใหม่ได้
+          context.read<RoomBloc>().add(const ResetRoomEvent());
         }
       },
       builder: (context, roomState) {

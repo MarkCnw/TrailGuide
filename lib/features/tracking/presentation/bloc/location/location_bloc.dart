@@ -41,18 +41,46 @@ class LocationBloc extends Bloc<LocationEvent, LocationState> {
       return;
     }
 
-    // 2. ถ้าผ่านหมด เริ่มดูดข้อมูลแบบ Stream
+    // 2. ดึงพิกัดเริ่มต้นให้เร็วที่สุด (แก้ปัญหารอ GPS นานตอนเริ่ม)
+    bool gotInitialPosition = false;
+
+    // ขั้นที่ 1: ลองดึงพิกัดล่าสุดที่เครื่องจำไว้ (ได้ทันที ไม่ต้องรอ)
+    try {
+      Position? lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) {
+        print("📍 [BLoC] ✅ ใช้พิกัดที่เครื่องจำไว้: Lat ${lastKnown.latitude}, Lng ${lastKnown.longitude}");
+        add(OnLocationUpdatedEvent(lastKnown));
+        gotInitialPosition = true;
+      }
+    } catch (e) {
+      print("📍 [BLoC] ⚠️ ดึงพิกัดที่จำไว้ไม่ได้: $e");
+    }
+
+    // ขั้นที่ 2: ถ้าไม่มีพิกัดที่จำไว้ → ยิง GPS จริงเลย (รอได้แค่ 5 วินาที ถ้าไม่ได้ก็ข้ามไป)
+    if (!gotInitialPosition) {
+      try {
+        Position currentPosition = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 5),
+        );
+        print("📍 [BLoC] ✅ ได้พิกัด GPS สด: Lat ${currentPosition.latitude}, Lng ${currentPosition.longitude}");
+        add(OnLocationUpdatedEvent(currentPosition));
+      } catch (e) {
+        print("📍 [BLoC] ⚠️ หา GPS ไม่ทันใน 5 วิ (จะรอจาก Stream แทน): $e");
+      }
+    }
+
+    // ขั้นที่ 3: เปิด Stream ดูดพิกัดต่อเนื่องเป็นปกติ
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 5, // 🧭 เพิ่มจาก 2 เป็น 5 เมตร เพื่อลด noise จาก GPS ที่ทำให้เข็มทิศแกว่งเวลาเดินช้าๆ
+      distanceFilter: 2,
     );
 
-    _positionStream?.cancel(); // ยกเลิกอันเก่าก่อนถ้ามี
+    _positionStream?.cancel();
     _positionStream = Geolocator.getPositionStream(
       locationSettings: locationSettings,
     ).listen(
       (Position position) {
-        // เมื่อได้พิกัดใหม่ ให้ยิง Event ไปอัปเดต State
         print("📍 [BLoC] GPS Updated: Lat ${position.latitude}, Lng ${position.longitude}");
         add(OnLocationUpdatedEvent(position));
       },

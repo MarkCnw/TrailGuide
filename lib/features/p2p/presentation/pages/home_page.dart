@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:svg_flutter/svg.dart';
 
 import 'package:torch_light/torch_light.dart';
@@ -93,25 +94,25 @@ class _HomeViewState extends State<_HomeView> {
     return Scaffold(
       backgroundColor: (Colors.white),
       body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
+        physics: const NeverScrollableScrollPhysics(),
         slivers: [
           // === CLEAN APP BAR ===
           SliverAppBar(
-            expandedHeight: 100.0,
+            expandedHeight: 100.h,
             floating: false,
             pinned: true,
             backgroundColor: AppColors.primary,
             surfaceTintColor: Colors.transparent,
             elevation: 0,
             bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(1.0),
-              child: Container(color: Colors.transparent, height: 1.0),
+              preferredSize:  Size.fromHeight(1.0.h),
+              child: Container(color: Colors.transparent, height: 1.0.h),
             ),
             flexibleSpace: FlexibleSpaceBar(
-              titlePadding: const EdgeInsets.only(
-                left: 24,
-                bottom: 15,
-                right: 24,
+              titlePadding:  EdgeInsets.only(
+                left: 24.w,
+                bottom: 15.h,
+                right: 24.w,
               ),
               title: BlocBuilder<OnboardingCubit, OnboardingState>(
                 builder: (context, state) {
@@ -122,8 +123,8 @@ class _HomeViewState extends State<_HomeView> {
                       children: [
                         // รูปโปรไฟล์
                         Container(
-                          margin: const EdgeInsets.only(top: 2),
-                          padding: const EdgeInsets.all(2),
+                          margin:  EdgeInsets.only(top: 2.h),
+                          padding:  EdgeInsets.all(2.w),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
@@ -131,7 +132,8 @@ class _HomeViewState extends State<_HomeView> {
                             ),
                           ),
                           child: CircleAvatar(
-                            radius: 20,
+                            
+                            radius: 20.r,
                             backgroundColor: Colors.white.withOpacity(0.1),
                             backgroundImage: user.imagePath != null
                                 ? FileImage(File(user.imagePath!))
@@ -139,13 +141,13 @@ class _HomeViewState extends State<_HomeView> {
                             child: user.imagePath == null
                                 ? Icon(
                                     Icons.person_rounded,
-                                    size: 24,
+                                    size: 24.sp,
                                     color: Colors.white.withOpacity(0.7),
                                   )
                                 : null,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                         SizedBox(width: 12.w),
 
                         // ชื่อ และ Badge
                         Expanded(
@@ -167,11 +169,12 @@ class _HomeViewState extends State<_HomeView> {
                                 style: textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.w800,
                                   color: Colors.white,
+                                  
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              const SizedBox(height: 6),
+                               SizedBox(height: 6.h),
                             ],
                           ),
                         ),
@@ -187,18 +190,18 @@ class _HomeViewState extends State<_HomeView> {
           // === BODY CONTENT ===
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding:  EdgeInsets.symmetric(horizontal: 24.w),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 24),
+                   SizedBox(height: 24.h),
 
                   // 🛠️ DASHBOARD CARD (Flashlight + GPS)
                   Container(
-                    height: 86,
+                    height: 86.h,
                     decoration: BoxDecoration(
                       color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(20.r),
                       border: Border.all(
                         color: AppColors.border,
                         width: 1.5,
@@ -216,8 +219,8 @@ class _HomeViewState extends State<_HomeView> {
                         // 🔦 Flashlight Button
                         Expanded(
                           child: InkWell(
-                            borderRadius: const BorderRadius.horizontal(
-                              left: Radius.circular(20),
+                            borderRadius:  BorderRadius.horizontal(
+                              left: Radius.circular(20.r),
                             ),
                             onTap: _hasFlashlight
                                 ? _toggleFlashlight
@@ -232,9 +235,9 @@ class _HomeViewState extends State<_HomeView> {
                                   color: _isFlashlightOn
                                       ? AppColors.warning
                                       : AppColors.textLow,
-                                  size: 28,
+                                  size: 28.sp,
                                 ),
-                                const SizedBox(height: 6),
+                                 SizedBox(height: 6.h),
                                 Text(
                                   _isFlashlightOn
                                       ? "ปิดไฟฉาย"
@@ -254,8 +257,8 @@ class _HomeViewState extends State<_HomeView> {
 
                         // Divider
                         Container(
-                          width: 1.5,
-                          height: 40,
+                          width: 1.5.w,
+                          height: 40.h,
                           color: AppColors.border,
                         ),
 
@@ -306,32 +309,32 @@ class _HomeViewState extends State<_HomeView> {
                                       Icon(
                                         Icons.satellite_alt_rounded,
                                         color: signalColor,
-                                        size: 20,
+                                        size: 20.sp,
                                       ),
-                                      const SizedBox(width: 8),
+                                       SizedBox(width: 8.w),
                                       _buildSignalBar(
-                                        height: 6,
+                                        height: 6.h,
                                         isActive: bars >= 1,
                                         activeColor: signalColor,
                                       ),
                                       _buildSignalBar(
-                                        height: 10,
+                                        height: 10.h,
                                         isActive: bars >= 2,
                                         activeColor: signalColor,
                                       ),
                                       _buildSignalBar(
-                                        height: 14,
+                                        height: 14.h,
                                         isActive: bars >= 3,
                                         activeColor: signalColor,
                                       ),
                                       _buildSignalBar(
-                                        height: 18,
+                                        height: 18.h,
                                         isActive: bars >= 4,
                                         activeColor: signalColor,
                                       ),
                                     ],
                                   ),
-                                  const SizedBox(height: 8),
+                                  SizedBox(height: 8.h),
                                   Text(
                                     statusText,
                                     // 🟢 ดึง Style จาก Theme
@@ -349,7 +352,7 @@ class _HomeViewState extends State<_HomeView> {
                     ),
                   ),
 
-                  const SizedBox(height: 40),
+                  SizedBox(height: 40.h),
 
                   // --- หัวข้อวิธีใช้งาน ---
                   Text(
@@ -357,11 +360,11 @@ class _HomeViewState extends State<_HomeView> {
                     // 🟢 ดึง Style หลักจาก Theme 
                     style: textTheme.titleLarge,
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: 16.h),
 
                   // 📦 รวมทุก Step ไว้ในการ์ดใบเดียว
                   Container(
-                    padding: const EdgeInsets.all(5),
+                    padding:  EdgeInsets.all(5.w),
 
                     child: Column(
                       children: [
@@ -402,7 +405,7 @@ class _HomeViewState extends State<_HomeView> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 40),
+                  SizedBox(height: 40.h),
                 ],
               ),
             ),
@@ -420,12 +423,12 @@ class _HomeViewState extends State<_HomeView> {
   }) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
-      margin: const EdgeInsets.symmetric(horizontal: 1.5),
-      width: 4,
+      margin:  EdgeInsets.symmetric(horizontal: 1.5.w),
+      width: 4.w,
       height: height,
       decoration: BoxDecoration(
         color: isActive ? activeColor : AppColors.border,
-        borderRadius: BorderRadius.circular(2),
+        borderRadius: BorderRadius.circular(2.r),
       ),
     );
   }
@@ -448,11 +451,11 @@ class _HomeViewState extends State<_HomeView> {
         // 📏 เส้นแนวตั้ง
         if (!isLast)
           Positioned(
-            top: 40, // ขยับลงมาให้พอดีกับไอคอน
+            top: 40.h, // ขยับลงมาให้พอดีกับไอคอน
             bottom: 0,
-            left: 21.25, // จัดให้ตรงกลางไอคอน (44/2 - 1.5/2)
+            left: 18.25.w, // จัดให้ตรงกลางไอคอน (44/2 - 1.5/2)
             child: Container(
-              width: 1.5,
+              width: 1.5.w,
               color: AppColors.border.withOpacity(0.8),
             ),
           ),
@@ -463,51 +466,51 @@ class _HomeViewState extends State<_HomeView> {
           children: [
             // ไอคอน
             Container(
-              width: 50, // ขยายพื้นที่กล่องไอคอนให้ใหญ่ขึ้น
-              height: 50,
+              width: 37.w, // ขยายพื้นที่กล่องไอคอนให้ใหญ่ขึ้น
+              height: 37.w,
               alignment: Alignment.center, // 🟢 จัด SVG ให้อยู่กึ่งกลางกล่อง
               child: SvgPicture.asset(
                 svgPath,
-                width: 29, // 🟢 กำหนดขนาด SVG
-                height: 29,
+                width: 25.w, // 🟢 กำหนดขนาด SVG
+                height: 25.h,
                 colorFilter: ColorFilter.mode(
                   isDanger ? AppColors.danger : iconColor,
                   BlendMode.srcIn,
                 ),
               ),
             ),
-            const SizedBox(
-              width: 20,
+             SizedBox(
+              width: 10.w,
             ), // เพิ่มระยะห่างระหว่างไอคอนกับข้อความ
             
             // เนื้อหา
             Expanded(
               child: Padding(
                 padding: EdgeInsets.only(
-                  bottom: isLast ? 0 : 32.0,
+                  bottom: isLast ? 0 : 32.0.h,
                 ), // เพิ่มระยะห่างด้านล่างแต่ละสเต็ป
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     
-                    const SizedBox(height: 6),
+                     SizedBox(height: 6.h),
                     Text(
                       title,
                       // 🟢 ดึง Style จาก Theme
                       style: textTheme.titleMedium?.copyWith(
-                        fontSize: 17,
+                        fontSize: 17.sp,
                         fontWeight: FontWeight.w800,
                         color: isDanger
                             ? AppColors.danger
                             : AppColors.textHigh,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                     SizedBox(height: 8.h),
                     Text(
                       description,
                       // 🟢 ดึง Style จาก Theme
                       style: textTheme.bodyMedium?.copyWith(
-                        fontSize: 13.7,
+                        fontSize: 13.7.sp,
                         color: isDanger
                             ? AppColors.danger.withOpacity(0.8)
                             : AppColors.textMedium,

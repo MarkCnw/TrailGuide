@@ -8,7 +8,7 @@ import 'package:trail_guide/features/p2p/presentation/bloc/room/room_bloc.dart';
 import 'package:trail_guide/features/tracking/presentation/bloc/location/location_bloc.dart';
 import 'features/onboarding/presentation/cubit/onboarding_cubit.dart';
 import 'features/history/presentation/cubit/history_cubit.dart';
-
+import 'package:flutter_screenutil/flutter_screenutil.dart'; // 🟢 1. Import
 import 'injection_container.dart' as di;
 
 void main() async {
@@ -46,15 +46,22 @@ class MyApp extends StatelessWidget {
           create: (_) => di.sl<HistoryCubit>(),
         ),
       ],
-      child:  MaterialApp.router(
-        debugShowCheckedModeBanner: false,
-        title: 'TrailGuide',
-        routerConfig: AppRouter.router,
+      child: ScreenUtilInit(
+        designSize: const Size(390, 844), // ขนาดหน้าจอ Figma ของคุณ
+        minTextAdapt: true, // ปรับสเกลฟอนต์อัตโนมัติ
+        splitScreenMode: true,
+        builder: (context, child) {
+          return MaterialApp.router(
+            debugShowCheckedModeBanner: false,
+            title: 'TrailGuide',
+            routerConfig: AppRouter.router,
+            theme: AppTheme.lightTheme,
+          );
         
-        // 🟢 2. เพิ่ม Theme ตรงนี้เพื่อบังคับใช้ฟอนต์ Prompt ทั้งแอป!
-        // 🟢 เรียกใช้ AppTheme ที่เราสร้างไว้ได้เลย
-        theme: AppTheme.lightTheme,
-      ),
-    );
+        },
+      )
+      );
+    
+    
   }
 }

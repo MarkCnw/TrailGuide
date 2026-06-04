@@ -11,8 +11,8 @@ class LocationDataSourceImpl implements LocationDataSource {
     // กำหนดความแม่นยำ (High เหมาะกับเดินป่า)
     // distanceFilter: 5 หมายถึง ถ้าเดินไม่ถึง 5 เมตร ไม่ต้องส่งค่ามา (ประหยัดแบต)
     const locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 5,
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 2,
     );
 
     return Geolocator.getPositionStream(
