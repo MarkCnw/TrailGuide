@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:svg_flutter/svg.dart';
 import 'package:trail_guide/core/constants/app_colors.dart';
 import 'package:trail_guide/core/utils/location_calculator.dart';
+import 'package:vibration/vibration.dart';
 
 // P2P & Room
 import '../../domain/entities/peer_entity.dart';
@@ -323,6 +324,12 @@ void _saveTripHistory(BuildContext context) {
               ),
             );
           } else if (roomState is RoomEmergencyState) {
+            // 📳 🟢 สั่งสั่นแบบ SOS (สั่น 1 วิ, หยุด 0.5 วิ, สั่น 1 วิ... วน 3 รอบ)
+            Vibration.hasVibrator().then((hasVibrator) {
+              if (hasVibrator == true) {
+                Vibration.vibrate(pattern: [0, 1000, 500, 1000, 500, 1000]); 
+              }
+            });
             showDialog(
               context: context,
               barrierDismissible: false,
@@ -1162,4 +1169,5 @@ void _saveTripHistory(BuildContext context) {
       ),
     );
   }
+
 }
