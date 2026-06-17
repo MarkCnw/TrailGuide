@@ -41,6 +41,11 @@ android {
     }
 }
 
+// เติมส่วนนี้ต่อท้ายไฟล์ได้เลยครับ 👇
+dependencies {
+    implementation 'com.google.android.gms:play-services-nearby:19.0.0'
+}
+
 flutter {
     source = "../.."
 }

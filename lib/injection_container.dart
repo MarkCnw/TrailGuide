@@ -3,6 +3,7 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:trail_guide/features/onboarding/data/datasources/onboarding_local_data_source.dart';
 import 'package:trail_guide/features/onboarding/presentation/cubit/onboarding_cubit.dart';
+import 'package:trail_guide/features/p2p/datasources/p2p_native_data_source.dart';
 import 'package:trail_guide/features/p2p/domain/usecases/broadcast_message.dart';
 import 'package:trail_guide/features/p2p/domain/usecases/watch_messages.dart';
 import 'package:trail_guide/features/p2p/presentation/bloc/p2p/p2p_bloc.dart';
@@ -87,7 +88,15 @@ Future<void> init() async {
   // ! ===========================
 
   // Repository
-  sl.registerLazySingleton<P2PRepository>(() => P2PRepositoryImpl());
+  // 1. ลงทะเบียน Data Source (เพิ่มบรรทัดนี้)
+  sl.registerLazySingleton<P2PNativeDataSource>(
+    () => P2PNativeDataSourceImpl(),
+  );
+  
+  // 2. แก้ไข Repository ให้รับ Data Source เข้าไป
+  sl.registerLazySingleton<P2PRepository>(
+    () => P2PRepositoryImpl(nativeDataSource: sl()), // เติม sl() ตรงนี้
+  );
 
   // Use Cases
   sl.registerLazySingleton(() => ScanForPeers(sl()));

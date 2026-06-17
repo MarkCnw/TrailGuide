@@ -2,17 +2,25 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:dartz/dartz.dart';
+import 'package:flutter/foundation.dart'; // 🆕 นำเข้า debugPrint
 import 'package:geolocator/geolocator.dart';
-import 'package:nearby_connections/nearby_connections.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:trail_guide/features/p2p/datasources/p2p_native_data_source.dart';
 import 'package:trail_guide/features/p2p/domain/entities/peer_entity.dart';
 
 import '../../../../core/error/failures.dart';
 import '../../domain/repositories/p2p_repository.dart';
 
-/// Implementation ของ P2PRepository ใช้ nearby_connections package
+/// Implementation ของ P2PRepository (เวอร์ชัน Native 100%)
 class P2PRepositoryImpl implements P2PRepository {
-  final Nearby _nearby = Nearby();
+  final P2PNativeDataSource nativeDataSource;
+
+  P2PRepositoryImpl({required this.nativeDataSource}) {
+    nativeDataSource.messageStream.listen((eventData) {
+      // โยนข้อมูลที่ไหลมาให้พนักงานคัดแยกจัดการ
+      _handleNativeEvent(eventData); 
+    });
+  }
 
   // ============================================================
   // STREAMS & CONTROLLERS
@@ -21,54 +29,125 @@ class P2PRepositoryImpl implements P2PRepository {
   final _peerStreamController = StreamController<List<PeerEntity>>.broadcast();
   final List<PeerEntity> _discoveredPeers = [];
   final List<PeerEntity> _connectedPeers = [];
-  
-  // 🆕 Stream สำหรับส่งต่อข้อความ (Payload) ที่ได้รับ
   final _messageStreamController = StreamController<String>.broadcast();
-  
-  // 🆕 เก็บ endpointId ของเครื่องที่เชื่อมต่อสำเร็จ เพื่อเอาไว้ Broadcast
   final List<String> _connectedEndpoints = [];
 
   // ============================================================
-  // CALLBACKS
+  // CALLBACKS (ของเก่าจาก Interface - ปล่อยว่างไว้)
   // ============================================================
 
-  OnPayloadReceivedCallback? _onPayloadReceived;
-  OnPeerDisconnectedCallback? _onPeerDisconnected;
-  OnConnectionCallback? _onNewConnection;
-
   @override
-  set onPayloadReceived(OnPayloadReceivedCallback? callback) {
-    _onPayloadReceived = callback;
+  set onPayloadReceived(OnPayloadReceivedCallback? callback) {}
+
+  // ============================================================
+  // พนักงานคัดแยกข้อมูลจาก Native (Android)
+  // ============================================================
+  void _handleNativeEvent(String eventData) {
+    // หั่นข้อความด้วยเครื่องหมาย |
+    final parts = eventData.split('|'); 
+    if (parts.isEmpty) return;
+
+    final command = parts[0]; // ป้ายชื่อคำสั่ง เช่น FOUND, MESSAGE
+
+    switch (command) {
+      case 'FOUND': // สแกนเจอเพื่อน
+        if (parts.length >= 3) {
+          final id = parts[1];
+          final name = parts[2];
+          // ถ้ายังไม่มีชื่อใน List ให้เพิ่มเข้าไป แล้วอัปเดตหน้าจอ
+          if (!_discoveredPeers.any((p) => p.id == id)) {
+            _discoveredPeers.add(PeerEntity(id: id, name: name, rssi: 0, isLost: false));
+            _updatePeersStream(); 
+          }
+        }
+        break;
+
+      case 'LOST': // เพื่อนเดินออกนอกระยะ
+        if (parts.length >= 2) {
+          final id = parts[1];
+          _discoveredPeers.removeWhere((p) => p.id == id);
+          _updatePeersStream();
+        }
+        break;
+
+      case 'INITIATED': // มีคนขอจับมือเชื่อมต่อ
+        if (parts.length >= 3) {
+          final id = parts[1];
+          final name = parts[2];
+          _pendingConnectionNames[id] = name;
+          
+          // ระบบ Auto-Accept: ถ้ายอมรับอัตโนมัติ ให้กดยอมรับเลย
+          if (!_acceptedPeers.contains(id)) {
+            _acceptedPeers.add(id);
+            acceptConnection(id);
+          }
+        }
+        break;
+
+      case 'CONNECTED': // เชื่อมต่อสำเร็จ! เข้าห้องแล้ว
+        if (parts.length >= 2) {
+          final id = parts[1];
+          final peerName = _pendingConnectionNames[id] ?? 'Unknown';
+          
+          // ย้ายเข้าลิสต์คนที่เชื่อมต่อแล้ว
+          if (!_connectedPeers.any((p) => p.id == id)) {
+            _connectedPeers.add(PeerEntity(id: id, name: peerName, rssi: 0, isLost: false));
+          }
+          if (!_connectedEndpoints.contains(id)) {
+            _connectedEndpoints.add(id);
+          }
+          _pendingConnectionNames.remove(id); // ลบออกจากคิวรอ
+          _updatePeersStream(); // อัปเดตหน้าจอ
+        }
+        break;
+
+      case 'REJECTED': // ถูกปฏิเสธ หรือการเชื่อมต่อล้มเหลว
+        if (parts.length >= 2) {
+          final id = parts[1];
+          _pendingConnectionNames.remove(id);
+          _acceptedPeers.remove(id);
+        }
+        break;
+
+      case 'DISCONNECTED': // ขาดการเชื่อมต่อ หรือเขากดวางสาย
+        if (parts.length >= 2) {
+          final id = parts[1];
+          _connectedPeers.removeWhere((p) => p.id == id);
+          _acceptedPeers.remove(id);
+          _connectedEndpoints.remove(id);
+          _updatePeersStream(); // อัปเดตหน้าจอว่าเพื่อนหายไปแล้ว
+        }
+        break;
+
+      case 'MESSAGE': // มีข้อความแชทส่งมา
+        if (parts.length >= 3) {
+          final id = parts[1];
+          // รวมข้อความกลับไปเผื่อในแชทมีการพิมพ์เครื่องหมาย | มาด้วย จะได้ไม่พัง
+          final message = parts.sublist(2).join('|'); 
+          
+          // โยนเข้า BLoC ตามฟอร์แมตเดิมที่คุณเคยทำไว้
+          _messageStreamController.add("$id|$message"); 
+        }
+        break;
+    }
   }
 
   @override
-  set onPeerDisconnected(OnPeerDisconnectedCallback? callback) {
-    _onPeerDisconnected = callback;
-  }
+  set onPeerDisconnected(OnPeerDisconnectedCallback? callback) {}
 
   @override
-  set onNewConnection(OnConnectionCallback? callback) {
-    _onNewConnection = callback;
-  }
+  set onNewConnection(OnConnectionCallback? callback) {}
 
   // ============================================================
-  // CONSTANTS & STATE
+  // STATE
   // ============================================================
-
-  final Strategy _strategy = Strategy.P2P_STAR;
-  static const String _serviceId = 'com.markcnw.trail_guide';
 
   bool _isDiscovering = false;
   bool _isAdvertising = false;
   Timer? _retryTimer;
 
-  // เก็บชื่อ peer ที่กำลังเชื่อมต่อ
   final Map<String, String> _pendingConnectionNames = {};
-
-  // เก็บ peer ที่ accept แล้ว (ป้องกัน accept ซ้ำ)
   final Set<String> _acceptedPeers = {};
-
-  P2PRepositoryImpl();
 
   // ============================================================
   // GETTERS
@@ -89,7 +168,6 @@ class P2PRepositoryImpl implements P2PRepository {
   @override
   bool get isDiscovering => _isDiscovering;
 
-  // 🆕 Getter สำหรับ Stream รับข้อความ
   @override
   Stream<String> get messageStream => _messageStreamController.stream;
 
@@ -99,13 +177,11 @@ class P2PRepositoryImpl implements P2PRepository {
 
   Future<Either<Failure, bool>> _checkPermissions() async {
     try {
-      // 1. ตรวจสอบ Location Service
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         return const Left(P2PFailure('กรุณาเปิด Location Service (GPS)'));
       }
 
-      // 2. ขอ Permission ทีละตัว
       Map<Permission, PermissionStatus> statuses = await [
         Permission.location,
         Permission.bluetoothScan,
@@ -114,12 +190,10 @@ class P2PRepositoryImpl implements P2PRepository {
         Permission.nearbyWifiDevices,
       ].request();
 
-      // 3. ตรวจสอบ Location Permission
       if (statuses[Permission.location]?.isDenied ?? true) {
         return const Left(P2PFailure('กรุณาอนุญาต Location Permission'));
       }
 
-      // 4. ตรวจสอบ Bluetooth Permissions
       if (statuses[Permission.bluetoothScan]?.isDenied ?? true) {
         return const Left(P2PFailure('กรุณาอนุญาต Bluetooth Scan Permission'));
       }
@@ -141,7 +215,7 @@ class P2PRepositoryImpl implements P2PRepository {
   ) async {
     try {
       if (_isDiscovering) {
-        await _nearby.stopDiscovery();
+        await nativeDataSource.stopNativeDiscovery();
         await Future.delayed(const Duration(milliseconds: 300));
       }
 
@@ -155,77 +229,25 @@ class P2PRepositoryImpl implements P2PRepository {
 
       _discoveredPeers.clear();
       _updatePeersStream();
-
-      final bool result = await _nearby.startDiscovery(
-        userName,
-        _strategy,
-        onEndpointFound: (endpointId, endpointName, serviceId) {
-          _onEndpointFound(endpointId, endpointName);
-        },
-        onEndpointLost: (endpointId) {
-          _onEndpointLost(endpointId!);
-        },
-        serviceId: _serviceId,
-      );
-
-      if (result) {
-        _isDiscovering = true;
-        _startRetryTimer(userName);
-        return const Right(null);
-      } else {
-        return const Left(P2PFailure('ไม่สามารถเริ่มค้นหาได้'));
-      }
+      
+      await nativeDataSource.startNativeDiscovery(userName);
+      _isDiscovering = true;
+      _startRetryTimer(userName);
+      
+      return const Right(null);
     } catch (e) {
-      return Left(P2PFailure('Discovery Error:  $e'));
+      return Left(P2PFailure('ไม่สำเร็จ: $e'));
     }
-  }
-
-  void _onEndpointFound(String endpointId, String endpointName) {
-    final existingIndex = _discoveredPeers.indexWhere((p) => p.id == endpointId);
-
-    if (existingIndex >= 0) {
-      _discoveredPeers[existingIndex] = PeerEntity(
-        id: endpointId,
-        name: endpointName,
-        rssi: 0,
-        isLost: false,
-      );
-    } else {
-      _discoveredPeers.add(PeerEntity(
-        id: endpointId,
-        name: endpointName,
-        rssi: 0,
-        isLost: false,
-      ));
-    }
-
-    _updatePeersStream();
-  }
-
-  void _onEndpointLost(String endpointId) {
-    _discoveredPeers.removeWhere((p) => p.id == endpointId);
-    _updatePeersStream();
   }
 
   void _startRetryTimer(String userName) {
     _retryTimer?.cancel();
     _retryTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
       if (_isDiscovering) {
-        await _nearby.stopDiscovery();
+        await nativeDataSource.stopNativeDiscovery();
         await Future.delayed(const Duration(milliseconds: 500));
-
         if (_isDiscovering) {
-          await _nearby.startDiscovery(
-            userName,
-            _strategy,
-            onEndpointFound: (endpointId, endpointName, serviceId) {
-              _onEndpointFound(endpointId, endpointName);
-            },
-            onEndpointLost: (endpointId) {
-              _onEndpointLost(endpointId!);
-            },
-            serviceId: _serviceId,
-          );
+          await nativeDataSource.startNativeDiscovery(userName);
         }
       }
     });
@@ -236,7 +258,7 @@ class P2PRepositoryImpl implements P2PRepository {
     try {
       _isDiscovering = false;
       _retryTimer?.cancel();
-      await _nearby.stopDiscovery();
+      await nativeDataSource.stopNativeDiscovery();
       return const Right(null);
     } catch (e) {
       return Left(P2PFailure('Stop Discovery Error: $e'));
@@ -254,7 +276,7 @@ class P2PRepositoryImpl implements P2PRepository {
   ) async {
     try {
       if (_isAdvertising) {
-        await _nearby.stopAdvertising();
+        await nativeDataSource.stopNativeAdvertising();
         await Future.delayed(const Duration(milliseconds: 300));
       }
 
@@ -269,83 +291,20 @@ class P2PRepositoryImpl implements P2PRepository {
       _connectedPeers.clear();
       _acceptedPeers.clear();
 
-      final bool result = await _nearby.startAdvertising(
-        userName,
-        _strategy,
-        onConnectionInitiated: _onConnectionInitiated,
-        onConnectionResult: _onConnectionResult,
-        onDisconnected: _onDisconnected,
-        serviceId: _serviceId,
-      );
-
-      if (result) {
-        _isAdvertising = true;
-        return const Right(null);
-      } else {
-        return const Left(P2PFailure('ไม่สามารถเริ่ม Advertising ได้'));
-      }
+      await nativeDataSource.startNativeAdvertising(userName);
+      _isAdvertising = true;
+      
+      return const Right(null);
     } catch (e) {
       return Left(P2PFailure('Advertising Error: $e'));
     }
-  }
-
-  void _onConnectionInitiated(String endpointId, ConnectionInfo info) {
-    print('P2P: Connection initiated from $endpointId (${info.endpointName})');
-
-    _pendingConnectionNames[endpointId] = info.endpointName;
-
-    if (!_acceptedPeers.contains(endpointId)) {
-      _acceptedPeers.add(endpointId);
-      acceptConnection(endpointId);
-    }
-  }
-
-  void _onConnectionResult(String endpointId, Status status) {
-    print('P2P: Connection result for $endpointId: $status');
-
-    if (status == Status.CONNECTED) {
-      final peerName = _pendingConnectionNames[endpointId] ?? 'Unknown';
-
-      final newPeer = PeerEntity(
-        id: endpointId,
-        name: peerName,
-        rssi: 0,
-        isLost: false,
-      );
-
-      final existingIndex = _connectedPeers.indexWhere((p) => p.id == endpointId);
-      if (existingIndex < 0) {
-        _connectedPeers.add(newPeer);
-      }
-      
-      // บันทึกเข้า list สำหรับใช้ส่ง Broadcast
-      if (!_connectedEndpoints.contains(endpointId)) {
-        _connectedEndpoints.add(endpointId);
-      }
-
-      _onNewConnection?.call(endpointId, peerName);
-      _pendingConnectionNames.remove(endpointId);
-    } else {
-      _pendingConnectionNames.remove(endpointId);
-      _acceptedPeers.remove(endpointId);
-    }
-  }
-
-  void _onDisconnected(String endpointId) {
-    print('P2P: Disconnected from $endpointId');
-
-    _connectedPeers.removeWhere((p) => p.id == endpointId);
-    _acceptedPeers.remove(endpointId);
-    _connectedEndpoints.remove(endpointId); // ลบออกจาก list broadcast
-
-    _onPeerDisconnected?.call(endpointId);
   }
 
   @override
   Future<Either<Failure, void>> stopAdvertising() async {
     try {
       _isAdvertising = false;
-      await _nearby.stopAdvertising();
+      await nativeDataSource.stopNativeAdvertising();
       return const Right(null);
     } catch (e) {
       return Left(P2PFailure('Stop Advertising Error: $e'));
@@ -359,92 +318,20 @@ class P2PRepositoryImpl implements P2PRepository {
   @override
   Future<Either<Failure, void>> connectToPeer(String peerId) async {
     try {
-      print('P2P: Requesting connection to $peerId');
-
+      debugPrint('P2P: Requesting connection to $peerId');
       _acceptedPeers.clear();
-
-      await _nearby.requestConnection(
-        'TrailGuide User',
-        peerId,
-        onConnectionInitiated: (endpointId, info) {
-          print('P2P: (Member) Connection initiated to $endpointId');
-          _pendingConnectionNames[endpointId] = info.endpointName;
-
-          if (!_acceptedPeers.contains(endpointId)) {
-            _acceptedPeers.add(endpointId);
-            acceptConnection(endpointId);
-          }
-        },
-        onConnectionResult: (endpointId, status) {
-          print('P2P: (Member) Connection result: $status');
-
-          if (status == Status.CONNECTED) {
-            final peerName = _pendingConnectionNames[endpointId] ?? 'Unknown';
-
-            final newPeer = PeerEntity(
-              id: endpointId,
-              name: peerName,
-              rssi: 0,
-              isLost: false,
-            );
-
-            final existingIndex = _connectedPeers.indexWhere((p) => p.id == endpointId);
-            if (existingIndex < 0) {
-              _connectedPeers.add(newPeer);
-            }
-            
-            // บันทึกเข้า list สำหรับใช้ส่ง Broadcast
-            if (!_connectedEndpoints.contains(endpointId)) {
-              _connectedEndpoints.add(endpointId);
-            }
-
-            _onNewConnection?.call(endpointId, peerName);
-            _pendingConnectionNames.remove(endpointId);
-          } else {
-            _acceptedPeers.remove(endpointId);
-          }
-        },
-        onDisconnected: (endpointId) {
-          print('P2P: (Member) Disconnected from $endpointId');
-          _connectedPeers.removeWhere((p) => p.id == endpointId);
-          _acceptedPeers.remove(endpointId);
-          _connectedEndpoints.remove(endpointId);
-          _onPeerDisconnected?.call(endpointId);
-        },
-      );
+      await nativeDataSource.requestConnection(peerId);
       return const Right(null);
     } catch (e) {
       return Left(P2PFailure('Connection Error: $e'));
     }
   }
 
-  // 🔥 ฟังก์ชันหลักสำหรับยอมรับการเชื่อมต่อ และ "ดักฟังข้อมูล"
   @override
   Future<Either<Failure, void>> acceptConnection(String peerId) async {
     try {
-      print('P2P: Accepting connection from $peerId');
-
-      await _nearby.acceptConnection(
-        peerId,
-        onPayLoadRecieved: (endpointId, payload) {
-          // ดักจับข้อมูลที่วิ่งเข้ามาในท่อ
-          if (payload.type == PayloadType.BYTES && payload.bytes != null) {
-            // 1. แปลง Bytes เป็น String
-            String message = String.fromCharCodes(payload.bytes!);
-            print("📦 P2P: Received Payload from $endpointId: $message");
-            
-            // 2. พ่นข้อมูลเข้า Stream พร้อมบอกว่าใครส่งมา เพื่อให้ BLoC นำไปใช้ต่อ
-            _messageStreamController.add("$endpointId|$message");
-            
-            // เรียก callback เก่า (ถ้ามีใครใช้อยู่)
-            _onPayloadReceived?.call(endpointId, payload.bytes!);
-          }
-        },
-        onPayloadTransferUpdate: (endpointId, update) {
-          // ไม่ได้ใช้สำหรับ Byte Transfer
-        },
-      );
-      
+      debugPrint('P2P: Accepting connection from $peerId');
+      await nativeDataSource.acceptConnection(peerId);
       return const Right(null);
     } catch (e) {
       return Left(P2PFailure('Accept Connection Error: $e'));
@@ -454,8 +341,8 @@ class P2PRepositoryImpl implements P2PRepository {
   @override
   Future<Either<Failure, void>> disconnectFromPeer(String peerId) async {
     try {
-      print('P2P: Disconnecting from $peerId');
-      _nearby.disconnectFromEndpoint(peerId);
+      debugPrint('P2P: Disconnecting from $peerId');
+      await nativeDataSource.disconnectFromEndpoint(peerId);
       _connectedPeers.removeWhere((p) => p.id == peerId);
       _acceptedPeers.remove(peerId);
       _connectedEndpoints.remove(peerId);
@@ -466,16 +353,14 @@ class P2PRepositoryImpl implements P2PRepository {
   }
 
   // ============================================================
-  // SENDING DATA (Broadcast & Single)
+  // SENDING DATA
   // ============================================================
 
-  // 🆕 ส่งข้อมูลหาทุกคนที่เชื่อมต่ออยู่
   @override
   Future<Either<Failure, void>> broadcastMessage(String message) async {
     try {
-      final bytes = Uint8List.fromList(message.codeUnits);
       for (String peerId in _connectedEndpoints) {
-        await _nearby.sendBytesPayload(peerId, bytes);
+        await nativeDataSource.sendMessage(peerId, message);
       }
       return const Right(null);
     } catch (e) {
@@ -484,29 +369,21 @@ class P2PRepositoryImpl implements P2PRepository {
   }
 
   @override
-  Future<Either<Failure, void>> sendPayload(
-    String peerId,
-    String message,
-  ) async {
+  Future<Either<Failure, void>> sendPayload(String peerId, String message) async {
     try {
-      await _nearby.sendBytesPayload(
-        peerId,
-        Uint8List.fromList(message.codeUnits),
-      );
+      await nativeDataSource.sendMessage(peerId, message);
       return const Right(null);
     } catch (e) {
-      print('P2P: Send payload error: $e');
+      debugPrint('P2P: Send payload error: $e');
       return Left(P2PFailure('Send Payload Error: $e'));
     }
   }
 
   @override
-  Future<Either<Failure, void>> sendBytesPayload(
-    String peerId,
-    Uint8List bytes,
-  ) async {
+  Future<Either<Failure, void>> sendBytesPayload(String peerId, Uint8List bytes) async {
     try {
-      await _nearby.sendBytesPayload(peerId, bytes);
+      String message = String.fromCharCodes(bytes);
+      await nativeDataSource.sendMessage(peerId, message);
       return const Right(null);
     } catch (e) {
       return Left(P2PFailure('Send Bytes Payload Error: $e'));
@@ -524,16 +401,16 @@ class P2PRepositoryImpl implements P2PRepository {
       _isAdvertising = false;
       _retryTimer?.cancel();
 
-      await _nearby.stopDiscovery();
-      await _nearby.stopAdvertising();
-      _nearby.stopAllEndpoints();
+      await nativeDataSource.stopNativeDiscovery();
+      await nativeDataSource.stopNativeAdvertising();
+      await nativeDataSource.stopNativeAllEndpoints();
 
       _discoveredPeers.clear();
       _connectedPeers.clear();
       _pendingConnectionNames.clear();
       _acceptedPeers.clear();
       _connectedEndpoints.clear();
-      
+
       _updatePeersStream();
 
       return const Right(null);
