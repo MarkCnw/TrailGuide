@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/placeholder-trailguide-logo" alt="TrailGuide Logo" width="160">
+  <img width="363" height="368" alt="logoooo" src="https://github.com/user-attachments/assets/d141d71f-eb0b-4de7-8a4c-b0db04ce7627" />
 </p>
 
 <h1 align="center">
@@ -55,7 +55,9 @@ TrailGuide เป็นแอปพลิเคชันบนมือถือ
 
 เมื่อเข้าร่วมห้อง เรดาร์จะแสดงตำแหน่งของเพื่อนร่วมทริปแบบเรียลไทม์ พร้อมบอกระยะห่าง (เมตร) และทิศทางที่เพื่อนอยู่ โดยอ้างอิงจากการหมุนเข็มทิศของผู้ใช้อัตโนมัติ
 
-<img width="1080" height="2400" alt="Screenshot_20260520_191426" src="https://github.com/user-attachments/assets/050132d6-bd15-4a9b-ac8d-84349ca43c5a" />
+<p align="center">
+  <img width="250"alt="Screenshot_20260520_191426" src="https://github.com/user-attachments/assets/050132d6-bd15-4a9b-ac8d-84349ca43c5a" />
+</p>
 
 
 
@@ -65,17 +67,18 @@ TrailGuide เป็นแอปพลิเคชันบนมือถือ
 
 ความปลอดภัยคือหัวใจหลัก หากลูกทริปคนใดเดินห่างจากกลุ่มเกิน 80 เมตร ระบบจะแสดงเตือน (Proximity Alert) ทันที และในกรณีฉุกเฉิน ผู้ใช้สามารถกดปุ่ม SOS เพื่อส่งสัญญาณขอความช่วยเหลือ บังคับให้อุปกรณ์ของทุกคนในห้องแจ้งเตือนและสั่นเตือนพร้อมกัน
 
-<img width="1080" height="2400" alt="ภาพ" src="https://github.com/user-attachments/assets/886b1088-2032-4c3a-8b11-1b5c1932ea6e" />
-
-<img width="1080" height="2400" alt="ภาพ" src="https://github.com/user-attachments/assets/6980f168-bcc4-4d35-bd5a-9ab4b880ae56" />
-
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/886b1088-2032-4c3a-8b11-1b5c1932ea6e" alt="ภาพที่ 1" width="250" />
+  &nbsp; &nbsp; &nbsp;
+  <img src="https://github.com/user-attachments/assets/6980f168-bcc4-4d35-bd5a-9ab4b880ae56" alt="ภาพที่ 2" width="250" />
+</p>
 ---
 
 ## 🗺️ Trip History Logging
 
 เมื่อจบทริป (Host ปิดห้อง) ระบบจะสรุปข้อมูลการเดินทางทั้งหมด เช่น เวลาเริ่มต้น-สิ้นสุด, ระยะทางรวม (คำนวณจาก Haversine formula) และรายชื่อผู้ร่วมทริป บันทึกลง Local Database ทันที
 
-https://github.com/user-attachments/assets/placeholder-video-history
+
 
 ---
 
