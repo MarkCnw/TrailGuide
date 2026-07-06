@@ -1,47 +1,136 @@
-🌲 TrailGuide: Offline Hiking Companion
-📖 Overview (แอปคืออะไร)
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/placeholder-trailguide-logo" alt="TrailGuide Logo" width="160">
+</p>
 
-TrailGuide คือแอปพลิเคชันบนมือถือสำหรับสายเดินป่า (Hiking Safety App) ที่ออกแบบมาเพื่อเป็นเครื่องมือติดตามและสื่อสารภายในทีม โดยจุดเด่นที่สุดคือ สามารถทำงานได้ 100% แม้อยู่ในพื้นที่อับสัญญาณอินเทอร์เน็ต (Zero-Cellular Coverage) ตัวแอปทำหน้าที่เป็นทั้งเรดาร์ติดตามตัวและวิทยุสื่อสารฉุกเฉินประจำกลุ่ม เพื่อความปลอดภัยสูงสุดตลอดทริปการเดินทาง
-🎯 Problem (แก้ปัญหาอะไร)
+<h1 align="center">
+  TrailGuide
+</h1>
 
-ปัญหาคลาสสิกและอันตรายที่สุดของการเดินป่าคือ "การพลัดหลงในจุดที่ไม่มีสัญญาณเน็ต"
-เมื่อสมาชิกในทีมเดินทิ้งระยะห่างกันเกินไป หรือเกิดอุบัติเหตุฉุกเฉินกลางป่า พวกเขาจะไม่สามารถโทรศัพท์ ส่งข้อความ หรือแชร์โลเคชั่นหาเพื่อนในทีมได้เลย TrailGuide จึงถูกสร้างขึ้นมาเพื่ออุดช่องโหว่นี้ โดยการสร้างเครือข่ายสัญญาณส่วนตัว (Local Network) ขึ้นมาใช้เองภายในกลุ่ม
-✨ Features
+<p align="center">
+  <strong>แอปพลิเคชัน Flutter สำหรับสายเดินป่า ช่วยระบุตำแหน่งและสื่อสารผ่านระบบ P2P แบบออฟไลน์</strong>
+</p>
 
-    📡 Offline P2P Networking: สร้างกลุ่ม (Host) และเข้าร่วมกลุ่ม (Member) เพื่อเชื่อมต่อกันได้โดยไม่ต้องใช้ Wi-Fi, 4G/5G, รหัสผ่าน หรือสแกน QR Code
+<p align="center">
+  ออกแบบภายใต้แนวคิด <strong>Offline-First</strong> โดยประมวลผลและเชื่อมต่อแบบ <strong>Peer-to-Peer (P2P)</strong> ระหว่างอุปกรณ์โดยตรง ไม่ต้องพึ่งพาสัญญาณอินเทอร์เน็ตหรือเซิร์ฟเวอร์ส่วนกลาง เหมาะสำหรับการใช้งานในพื้นที่ป่าลึก
+</p>
 
-    🧭 Team Radar & Tracking: หน้าจอเรดาร์แสดงตำแหน่งเพื่อนในทีมแบบ Real-time พร้อมบอกระยะห่าง (เมตร/กิโลเมตร) และมีเข็มทิศชี้ทิศทางเป้าหมายอย่างแม่นยำ
+<p align="center">
 
-    🚨 Emergency SOS Alert: ปุ่มกดส่งสัญญาณขอความช่วยเหลือฉุกเฉิน ที่สามารถยิงทะลุไปบังคับเปิดหน้าต่างแจ้งเตือน (Pop-up) สีแดงบนหน้าจอเพื่อนทุกคนในระยะสัญญาณทันที
+![Platform](https://img.shields.io/badge/Platform-Android-green?logo=android)
+![Flutter](https://img.shields.io/badge/Flutter-3.10+-02569B?logo=flutter)
+![Dart](https://img.shields.io/badge/Dart-3.0+-0175C2?logo=dart)
+![Clean Architecture](https://img.shields.io/badge/Architecture-Clean_Architecture-4CAF50)
+![BLoC](https://img.shields.io/badge/State_Management-BLoC-blue)
+![Isar](https://img.shields.io/badge/Database-Isar-orange)
 
-    ⚠️ Out-of-Range Alerts: ระบบแจ้งเตือนอัตโนมัติเมื่อมีสมาชิกเดินห่างออกไปเกินระยะปลอดภัย (เช่น 80 เมตร) หรือเมื่อสัญญาณการเชื่อมต่อของเพื่อนขาดหายไป (Offline Indicator)
+</p>
 
-    🌙 Tactical Dark UI: อินเทอร์เฟซโหมดมืดที่ออกแบบมาเพื่อความสบายตาเวลาใช้งานกลางคืน และช่วยประหยัดแบตเตอรี่โทรศัพท์อย่างขีดสุด
+---
 
-🛠️ Tech Stack
+# 📖 ภาพรวมโปรเจกต์
 
-    Frontend: Flutter (Dart)
+TrailGuide เป็นแอปพลิเคชันบนมือถือที่พัฒนาด้วย **Flutter** เพื่อแก้ปัญหาการพลัดหลงในป่า หรือการขาดการติดต่อสื่อสารเมื่ออยู่ในพื้นที่อับสัญญาณ 
 
-    State Management: BLoC Pattern (flutter_bloc)
+ระบบใช้เทคโนโลยี **Nearby Connections API (Native Android)** เชื่อมต่อผ่านบลูทูธและ Wi-Fi Direct เพื่อสร้างห้อง (Room) และแชร์พิกัด GPS, ทิศทางเข็มทิศ และข้อมูลต่างๆ ระหว่างเพื่อนร่วมทริป โดยข้อมูลทั้งหมดจะถูกซิงค์แบบ Real-time และแสดงผลบนหน้าจอเรดาร์ 
 
-    Networking: P2P Offline Communication (Device-to-Device Payload Transmission)
+นอกจากนี้ยังมีการจัดเก็บประวัติการเดินทาง (Trip History) ลงในฐานข้อมูล **Isar** ภายในตัวเครื่องแบบ 100% ทำให้มั่นใจได้ว่าข้อมูลพิกัดและการเดินทางของคุณจะถูกเก็บรักษาไว้อย่างปลอดภัยและเป็นส่วนตัว
 
-    Sensors & Calculation: Geolocation (GPS), flutter_compass (Hardware Magnetic Compass), Math (Haversine Formula for Distance & Bearing calculation)
+---
 
-🏗️ Architecture Diagram
+# ✨ ความสามารถหลัก
 
-    P2P Topology (Star/Mesh Hybrid): > ระบบใช้ Host เป็นศูนย์กลาง (Relay Station) ในการกระจายพิกัด GPS และคำสั่ง SOS. เมื่อ Member A ส่งพิกัด หรือกด SOS ข้อความจะวิ่งไปที่ Host จากนั้น Host จะทำหน้าที่กระจายข่าวให้ Member B, C, D อัตโนมัติ ทำให้ทุกคนเห็นข้อมูลตรงกันทั้งหมด
+- 📡 สื่อสารและแชร์พิกัดแบบออฟไลน์ 100% ผ่านระบบ Peer-to-Peer
+- 🧭 หน้าจอเรดาร์ติดตามเพื่อนร่วมทริป พร้อมระบบลดความแกว่งของเข็มทิศ (Low-pass filter)
+- 🚨 ระบบประกาศเหตุฉุกเฉิน (SOS Broadcast) พร้อมแจ้งเตือนแบบสั่น
+- ⚠️ แจ้งเตือนความปลอดภัยทันทีเมื่อเพื่อนร่วมทริปอยู่ห่างเกิน 80 เมตร
+- 🗺️ บันทึกประวัติการเดินทาง (เส้นทาง, ระยะทาง, เวลา) อัตโนมัติ
+- 🔦 เครื่องมือเอาตัวรอดพื้นฐาน (ไฟฉายเปิดด่วนจากหน้า Dashboard)
+- 📐 สถาปัตยกรรม Clean Architecture และ BLoC Pattern เพื่อความเสถียรของระบบ
 
-    State Management: > ใช้ RoomBloc จัดการสถานะห้องและเครือข่าย และใช้ LocationBloc จัดการข้อมูลพิกัด เซ็นเซอร์แยกออกจากลอจิก UI อย่างเด็ดขาด ป้องกันแอปกระตุกเมื่อข้อมูลวิ่งชนกัน
+---
+
+# 🚀 ตัวอย่างการทำงานของแอป
+
+## 📡 Offline Radar & Tracking
+
+เมื่อเข้าร่วมห้อง เรดาร์จะแสดงตำแหน่งของเพื่อนร่วมทริปแบบเรียลไทม์ พร้อมบอกระยะห่าง (เมตร) และทิศทางที่เพื่อนอยู่ โดยอ้างอิงจากการหมุนเข็มทิศของผู้ใช้อัตโนมัติ
+
+<img width="1080" height="2400" alt="Screenshot_20260520_191426" src="https://github.com/user-attachments/assets/050132d6-bd15-4a9b-ac8d-84349ca43c5a" />
 
 
 
-⚙️ How it works (Flow)
+---
 
-การทำงานของ TrailGuide แบ่งเป็น 3 ขั้นตอนง่ายๆ:
+## 🚨 Emergency SOS & Safety Alerts
 
-    Create / Join Team: เมื่อถึงจุดรวมพล คนที่เป็นหัวหน้าแก๊งจะกด "Create Room" (ทำหน้าที่เป็น Host) ส่วนลูกทีมกด "Join Room" ระบบจะค้นหาและเชื่อมต่อกันผ่าน P2P อัตโนมัติ
+ความปลอดภัยคือหัวใจหลัก หากลูกทริปคนใดเดินห่างจากกลุ่มเกิน 80 เมตร ระบบจะแสดงเตือน (Proximity Alert) ทันที และในกรณีฉุกเฉิน ผู้ใช้สามารถกดปุ่ม SOS เพื่อส่งสัญญาณขอความช่วยเหลือ บังคับให้อุปกรณ์ของทุกคนในห้องแจ้งเตือนและสั่นเตือนพร้อมกัน
 
-    Start Adventure (Radar Active): เมื่อ Host กดเริ่มทริป หน้าจอทุกคนจะเปลี่ยนเป็น "Radar Page" ระบบจะเริ่มดูดพิกัด GPS และเข็มทิศ (Heading) มาคำนวณระยะห่าง (Distance) และมุม (Bearing) เพื่อวาดจุดพิกัดเพื่อนลงบนหน้าจอเรดาร์
+<img width="1080" height="2400" alt="ภาพ" src="https://github.com/user-attachments/assets/886b1088-2032-4c3a-8b11-1b5c1932ea6e" />
 
-    Tracking & SOS: ระหว่างเดิน หากเพื่อนอยู่ห่างเกิน 80 เมตร ระบบจะเตือนด้วย SnackBar สีส้ม และหากมีคนกดปุ่ม SOS (ปุ่มแดงมุมล่าง) BLoC จะแพ็กคำสั่งพิเศษส่งผ่านคลื่น P2P ไปกระแทกหน้าจอเพื่อนทุกคนให้ขึ้นหน้าต่างแจ้งเตือนฉุกเฉินทันที
+<img width="1080" height="2400" alt="ภาพ" src="https://github.com/user-attachments/assets/6980f168-bcc4-4d35-bd5a-9ab4b880ae56" />
+
+---
+
+## 🗺️ Trip History Logging
+
+เมื่อจบทริป (Host ปิดห้อง) ระบบจะสรุปข้อมูลการเดินทางทั้งหมด เช่น เวลาเริ่มต้น-สิ้นสุด, ระยะทางรวม (คำนวณจาก Haversine formula) และรายชื่อผู้ร่วมทริป บันทึกลง Local Database ทันที
+
+https://github.com/user-attachments/assets/placeholder-video-history
+
+---
+
+# 🌟 ฟีเจอร์หลัก
+
+| ฟีเจอร์ | รายละเอียด |
+|----------|-------------|
+| 📡 P2P Connectivity | สร้างห้องและเชื่อมต่ออุปกรณ์หากันโดยตรง ไม่ใช้อินเทอร์เน็ต |
+| 🧭 Smart Radar | เรดาร์ติดตามพิกัดเพื่อนร่วมทริป อิงตามเข็มทิศและ GPS |
+| ⚠️ Proximity Alert | แจ้งเตือนอัตโนมัติเมื่อสมาชิกในกลุ่มอยู่ห่างเกินระยะปลอดภัย (80m) |
+| 🚨 SOS Broadcast | ส่งสัญญาณฉุกเฉินแบบกระจายตัว (Broadcast) ไปยังทุกคนในทริป |
+| 💓 Keep-Alive System | ตรวจสอบสถานะการเชื่อมต่อ (Ping/Pong) ทุก 5-10 วินาที |
+| 🗺️ Auto Trip Logging | บันทึกสถิติและเส้นทางการเดินป่าลง Isar Database อัตโนมัติ |
+| 📸 Base64 Image Sync | บีบอัดและแปลงรูปโปรไฟล์เพื่อส่งผ่าน P2P ให้ประหยัดแบนด์วิดท์ที่สุด |
+
+---
+
+# 🛠 เทคโนโลยีที่ใช้
+
+| หมวดหมู่ | เทคโนโลยี |
+|----------|-----------|
+| ภาษา | Dart, Kotlin (Native Bridge) |
+| UI Framework | Flutter |
+| สถาปัตยกรรม | Clean Architecture |
+| State Management | BLoC & Cubit |
+| ฐานข้อมูล | Isar (NoSQL) |
+| ฮาร์ดแวร์ & เซนเซอร์ | Geolocator, Flutter Compass, Torch Light |
+| การสื่อสาร P2P | Android Nearby Connections API |
+| Routing | GoRouter (StatefulShellRoute) |
+| การส่งข้อมูลข้ามแพลตฟอร์ม | MethodChannel & EventChannel |
+
+---
+
+# 🏛️ สถาปัตยกรรมของระบบ
+
+TrailGuide ถูกพัฒนาด้วย **Clean Architecture** แบ่งแยกการทำงานเป็นชั้น Data, Domain และ Presentation อย่างชัดเจน และมีการเขียน Native Bridge เพื่อให้ Flutter สามารถคุยกับ Android API ได้โดยตรง
+
+```text
+                 Flutter UI (Presentation)
+                       │
+                       ▼
+             BLoC / Cubit (State Management)
+                       │
+                       ▼
+                 Domain Use Cases 
+         (e.g., WatchPeers, CalculateDistance)
+           ┌───────────┴───────────┐
+           ▼                       ▼
+    P2P Repository           History Repository
+           │                       │
+           ▼                       ▼
+ ┌───────────────────┐    ┌───────────────────┐
+ │ Native P2P Source │    │ Isar Local Source │
+ └─────────┬─────────┘    └───────────────────┘
+           │
+           ▼
+ Android Nearby Connections
+(MethodChannel / EventChannel)
